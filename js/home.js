@@ -78,15 +78,12 @@ function removeMember(team, index) {
   persist();
 }
 
-function resetTeams() {
-  state.a = [];
-  state.b = [];
-  document.getElementById('team-a-name').value = 'Team A';
-  document.getElementById('team-b-name').value = 'Team B';
-  renderMembers('a');
-  renderMembers('b');
+function resetTeam(team) {
+  state[team] = [];
+  document.getElementById(`team-${team}-name`).value = team === 'a' ? 'Team A' : 'Team B';
+  renderMembers(team);
   persist();
-  showStatus('リセットしました');
+  showStatus(`Team ${team.toUpperCase()} をリセットしました`);
 }
 
 function renderMembers(team) {

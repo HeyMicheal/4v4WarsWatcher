@@ -20,6 +20,7 @@
           <div class="team-header team-a">
             <span class="team-icon">⚔</span>
             <input class="team-name-input" id="team-a-name" type="text" value="Team A" maxlength="16" />
+            <button class="btn-reset" onclick="resetTeam('a')" title="Team Aをリセット">リセット</button>
           </div>
           <ul class="member-list" id="team-a-members"></ul>
           <div class="add-member-row">
@@ -39,6 +40,7 @@
           <div class="team-header team-b">
             <span class="team-icon">🛡</span>
             <input class="team-name-input" id="team-b-name" type="text" value="Team B" maxlength="16" />
+            <button class="btn-reset" onclick="resetTeam('b')" title="Team Bをリセット">リセット</button>
           </div>
           <ul class="member-list" id="team-b-members"></ul>
           <div class="add-member-row">
@@ -58,7 +60,6 @@
 
     <footer>
       <span id="status-msg"></span>
-      <button class="btn-reset" onclick="resetTeams()">メンバーをリセット</button>
     </footer>
   </div>
 
