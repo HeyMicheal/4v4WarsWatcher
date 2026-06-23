@@ -84,6 +84,13 @@ function registerFeatures(retryCount = 0) {
   });
 }
 
+// ── homeウィンドウでの設定変更をリアルタイムで反映 ──
+window.addEventListener('storage', (event) => {
+  if (event.key === STORAGE_KEY) {
+    loadTeamConfig();
+  }
+});
+
 // ── 初期化 ──
 loadTeamConfig();
 registerFeatures();

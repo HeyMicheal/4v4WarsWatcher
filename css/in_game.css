@@ -34,14 +34,14 @@ body {
 
 /* Team A: 画面中央から左へ */
 #team-a-panel {
-  right: calc(50% + 140px);
+  right: calc(50% + 290px);
   border-top: 2px solid #4a90d9;
   text-align: right;
 }
 
 /* Team B: 画面中央から右へ */
 #team-b-panel {
-  left: calc(50% + 140px);
+  left: calc(50% + 290px);
   border-top: 2px solid #d9604a;
   text-align: left;
 }
