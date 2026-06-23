@@ -6,22 +6,18 @@ const state = {
   b: [],
 };
 
-function getText(id) {
-  return document.getElementById(id).textContent.trim();
+function getVal(id) {
+  return document.getElementById(id).value.replace(/\n/g, '').trim();
 }
 
-function setText(id, value) {
-  document.getElementById(id).textContent = value;
-}
-
-function clearText(id) {
-  document.getElementById(id).textContent = '';
+function setVal(id, value) {
+  document.getElementById(id).value = value;
 }
 
 function persist() {
   const data = {
-    teamA: { name: getText('team-a-name') || 'Team A', members: state.a },
-    teamB: { name: getText('team-b-name') || 'Team B', members: state.b },
+    teamA: { name: getVal('team-a-name') || 'Team A', members: state.a },
+    teamB: { name: getVal('team-b-name') || 'Team B', members: state.b },
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
@@ -33,11 +29,11 @@ function load() {
   try {
     const data = JSON.parse(raw);
     if (data.teamA) {
-      setText('team-a-name', data.teamA.name || 'Team A');
+      setVal('team-a-name', data.teamA.name || 'Team A');
       state.a = data.teamA.members || [];
     }
     if (data.teamB) {
-      setText('team-b-name', data.teamB.name || 'Team B');
+      setVal('team-b-name', data.teamB.name || 'Team B');
       state.b = data.teamB.members || [];
     }
     renderMembers('a');
@@ -48,7 +44,7 @@ function load() {
 }
 
 function addMember(team) {
-  const raw = getText(`team-${team}-input`);
+  const raw = getVal(`team-${team}-input`);
 
   if (!raw) return;
 
@@ -77,7 +73,7 @@ function addMember(team) {
   }
 
   state[team].push({ name, tag });
-  clearText(`team-${team}-input`);
+  setVal(`team-${team}-input`, '');
   renderMembers(team);
   persist();
   showStatus('');
@@ -91,7 +87,7 @@ function removeMember(team, index) {
 
 function resetTeam(team) {
   state[team] = [];
-  setText(`team-${team}-name`, team === 'a' ? 'Team A' : 'Team B');
+  setVal(`team-${team}-name`, team === 'a' ? 'Team A' : 'Team B');
   renderMembers(team);
   persist();
 }
@@ -134,15 +130,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById(`team-${team}-input`);
     const nameEl = document.getElementById(`team-${team}-name`);
 
-    // Enterキーで追加（改行を防ぐ）
+    // RiotID入力: Enterで追加（変換確定中は無視）
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.isComposing) {
+      if (e.key === 'Enter') {
         e.preventDefault();
-        addMember(team);
+        if (!e.isComposing) addMember(team);
       }
     });
 
-    // チーム名でもEnterで改行させない
+    // チーム名: Enterで改行させない
     nameEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -152,14 +148,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // チーム名変更を自動保存
     nameEl.addEventListener('input', persist);
-
-    // 貼り付け時にプレーンテキストのみ受け付ける
-    [input, nameEl].forEach((el) => {
-      el.addEventListener('paste', (e) => {
-        e.preventDefault();
-        const text = e.clipboardData.getData('text/plain').replace(/\n/g, '');
-        document.execCommand('insertText', false, text);
-      });
-    });
   });
 });

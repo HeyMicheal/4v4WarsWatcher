@@ -21,12 +21,13 @@ body {
   user-select: none;
 }
 
-/* contenteditable要素はuser-selectを解除 */
-[contenteditable="true"] {
+/* textarea共通リセット */
+textarea {
+  resize: none;
+  overflow: hidden;
+  font-family: 'Segoe UI', sans-serif;
   user-select: text;
   -webkit-user-select: text;
-  outline: none;
-  cursor: text;
 }
 
 /* ヘッダー */
@@ -94,11 +95,13 @@ main {
   letter-spacing: 1px;
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
+  height: 26px;
+  line-height: 1.4;
+  padding: 0 2px;
 }
 
 .team-name-input:focus {
+  outline: none;
   border-bottom-color: #f0c040;
 }
 
@@ -178,19 +181,13 @@ main {
   color: #e0e0e0;
   font-size: 13px;
   padding: 8px 10px;
+  height: 36px;
+  line-height: 1.4;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
   transition: border-color 0.15s;
 }
-.riot-id-input:focus { border-color: #f0c040; }
-
-/* placeholder の代替（contenteditable は ::placeholder 非対応） */
-.riot-id-input:empty::before {
-  content: attr(data-placeholder);
-  color: #444;
-  pointer-events: none;
-}
+.riot-id-input:focus { outline: none; border-color: #f0c040; }
+.riot-id-input::placeholder { color: #444; }
 
 .btn-add {
   background: #f0c040;

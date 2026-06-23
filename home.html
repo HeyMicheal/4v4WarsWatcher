@@ -19,18 +19,18 @@
         <div class="team-card" id="team-a-card">
           <div class="team-header team-a">
             <span class="team-icon">⚔</span>
-            <div class="team-name-input" id="team-a-name" contenteditable="true" spellcheck="false">Team A</div>
+            <textarea class="team-name-input" id="team-a-name" rows="1" spellcheck="false">Team A</textarea>
             <button class="btn-reset" onclick="resetTeam('a')" title="Team Aをリセット">リセット</button>
           </div>
           <ul class="member-list" id="team-a-members"></ul>
           <div class="add-member-row">
-            <div
+            <textarea
               class="riot-id-input"
               id="team-a-input"
-              contenteditable="true"
+              rows="1"
+              placeholder="RiotID#JP1"
               spellcheck="false"
-              data-placeholder="RiotID#JP1"
-            ></div>
+            ></textarea>
             <button class="btn-add" onclick="addMember('a')">追加</button>
           </div>
         </div>
@@ -39,18 +39,18 @@
         <div class="team-card" id="team-b-card">
           <div class="team-header team-b">
             <span class="team-icon">🛡</span>
-            <div class="team-name-input" id="team-b-name" contenteditable="true" spellcheck="false">Team B</div>
+            <textarea class="team-name-input" id="team-b-name" rows="1" spellcheck="false">Team B</textarea>
             <button class="btn-reset" onclick="resetTeam('b')" title="Team Bをリセット">リセット</button>
           </div>
           <ul class="member-list" id="team-b-members"></ul>
           <div class="add-member-row">
-            <div
+            <textarea
               class="riot-id-input"
               id="team-b-input"
-              contenteditable="true"
+              rows="1"
+              placeholder="RiotID#JP1"
               spellcheck="false"
-              data-placeholder="RiotID#JP1"
-            ></div>
+            ></textarea>
             <button class="btn-add" onclick="addMember('b')">追加</button>
           </div>
         </div>
