@@ -22,17 +22,18 @@ function applyTeamNames() {
 }
 
 // ── プレイヤーをチームに照合してHP・生存数を計算 ──
-function calcTeamStats(members, players) {
+// player_status は { "プレイヤー名": { health, rank, tag_line, ... } } の形式
+function calcTeamStats(members, playerStatusObj) {
   let totalHp = 0;
   let alive = 0;
 
   members.forEach((member) => {
-    const matched = players.find((p) => {
-      const name = (p.summoner_name || p.name || '').toLowerCase();
-      return name === member.name.toLowerCase();
-    });
-    if (matched) {
-      const hp = Number(matched.health) || 0;
+    // キー（プレイヤー名）で照合（大文字小文字無視）
+    const key = Object.keys(playerStatusObj).find(
+      (k) => k.toLowerCase() === member.name.toLowerCase()
+    );
+    if (key) {
+      const hp = Number(playerStatusObj[key].health) || 0;
       totalHp += hp;
       if (hp > 0) alive++;
     }
@@ -41,11 +42,11 @@ function calcTeamStats(members, players) {
   return { totalHp, alive };
 }
 
-function updateDisplay(players) {
+function updateDisplay(playerStatusObj) {
   if (!teamConfig) return;
 
-  const statsA = calcTeamStats(teamConfig.teamA?.members || [], players);
-  const statsB = calcTeamStats(teamConfig.teamB?.members || [], players);
+  const statsA = calcTeamStats(teamConfig.teamA?.members || [], playerStatusObj);
+  const statsB = calcTeamStats(teamConfig.teamB?.members || [], playerStatusObj);
 
   document.getElementById('team-a-hp').textContent = statsA.totalHp;
   document.getElementById('team-b-hp').textContent = statsB.totalHp;
@@ -63,8 +64,8 @@ function updateDisplay(players) {
 overwolf.games.events.onInfoUpdates2.addListener((event) => {
   if (event.feature === 'roster' && event.info?.roster?.player_status) {
     try {
-      const players = JSON.parse(event.info.roster.player_status);
-      updateDisplay(players);
+      const playerStatusObj = JSON.parse(event.info.roster.player_status);
+      updateDisplay(playerStatusObj);
     } catch (e) {
       console.error('player_status のパースに失敗:', e);
     }
