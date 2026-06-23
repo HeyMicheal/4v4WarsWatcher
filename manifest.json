@@ -23,7 +23,7 @@
     "windows": {
       "background": {
         "file": "background.html",
-        "transparent": false,
+        "transparent": true,
         "resizable": false,
         "show_in_taskbar": false,
         "desktop_only": true,
