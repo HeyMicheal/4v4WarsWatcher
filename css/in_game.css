@@ -9,37 +9,94 @@ body {
   height: 1080px;
   background: transparent;
   overflow: hidden;
-  font-family: sans-serif;
+  font-family: 'Segoe UI', sans-serif;
   color: #fff;
 }
 
 #overlay-root {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  display: flex;
-  gap: 12px;
+  top: 0;
+  left: 0;
+  right: 0;
 }
 
+/* ── 共通パネル ── */
 .team-panel {
-  background: rgba(0, 0, 0, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: absolute;
+  top: 8px;
+  width: 220px;
+  background: rgba(10, 10, 24, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
-  padding: 12px 20px;
-  min-width: 140px;
-  text-align: center;
+  padding: 8px 14px 10px;
+  backdrop-filter: blur(4px);
 }
 
-.team-label {
-  font-size: 14px;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+/* Team A: 画面中央から左へ */
+#team-a-panel {
+  right: calc(50% + 140px);
+  border-top: 2px solid #4a90d9;
+  text-align: right;
+}
+
+/* Team B: 画面中央から右へ */
+#team-b-panel {
+  left: calc(50% + 140px);
+  border-top: 2px solid #d9604a;
+  text-align: left;
+}
+
+/* ── チーム名 ── */
+.panel-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
   margin-bottom: 6px;
-  color: #f0c040;
+  color: #f0e0c0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.team-hp {
+/* ── 統計行 ── */
+.panel-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#team-a-panel .panel-stats {
+  flex-direction: row-reverse;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.stat-label {
+  font-size: 9px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
   font-size: 20px;
-  font-weight: bold;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #ffffff;
+}
+
+.stat-divider {
+  width: 1px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* 全滅時にパネルを暗くする */
+.team-panel.eliminated {
+  opacity: 0.45;
 }

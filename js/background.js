@@ -1,4 +1,4 @@
-const GAME_ID_TFT = 5426;
+const GAME_ID_TFT = 21570;
 
 let inGameWindow = null;
 
