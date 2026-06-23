@@ -6,7 +6,9 @@
     "version": "0.1.0.0",
     "minimum-overwolf-version": "0.220.0",
     "author": "HeyMicheal",
-    "description": "TFT 4v4 観戦用オーバーレイアプリ"
+    "description": "TFT 4v4 観戦用オーバーレイアプリ",
+    "icon": "img/icons/icon_256.png",
+    "icon_gray": "img/icons/icon_256.png"
   },
   "permissions": [
     "GameInfo",
