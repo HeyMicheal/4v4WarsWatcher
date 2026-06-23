@@ -87,7 +87,6 @@ function removeMember(team, index) {
 
 function resetTeam(team) {
   state[team] = [];
-  setVal(`team-${team}-name`, team === 'a' ? 'Team A' : 'Team B');
   renderMembers(team);
   persist();
 }
