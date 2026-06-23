@@ -34,6 +34,7 @@
         "resizable": false,
         "show_in_taskbar": true,
         "desktop_only": true,
+        "native_window": true,
         "size": {
           "width": 780,
           "height": 600
