@@ -3,7 +3,7 @@
   "type": "WebApp",
   "meta": {
     "name": "4v4WarsWatcher",
-    "version": "0.1.0",
+    "version": "0.1.0.0",
     "minimum-overwolf-version": "0.220.0",
     "author": "",
     "description": "TFT 4v4 観戦用オーバーレイアプリ"
@@ -39,20 +39,6 @@
         "clickthrough": true
       }
     },
-    "game_events": [
-      {
-        "game_ids": [5426],
-        "launch_event": "GameLaunch",
-        "focus_game_launch_gep_overlay": true,
-        "events": ["tft_damage_dealt", "player_died"],
-        "info_updates": [
-          "scene",
-          "board",
-          "store",
-          "player",
-          "active_player"
-        ]
-      }
-    ]
+    "game_events": [5426]
   }
 }
