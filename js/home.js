@@ -1,9 +1,39 @@
 const MAX_MEMBERS = 4;
+const STORAGE_KEY = '4v4wars_teams';
 
 const state = {
   a: [],
   b: [],
 };
+
+function persist() {
+  const data = {
+    teamA: { name: document.getElementById('team-a-name').value.trim() || 'Team A', members: state.a },
+    teamB: { name: document.getElementById('team-b-name').value.trim() || 'Team B', members: state.b },
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function load() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+
+  try {
+    const data = JSON.parse(raw);
+    if (data.teamA) {
+      document.getElementById('team-a-name').value = data.teamA.name || 'Team A';
+      state.a = data.teamA.members || [];
+    }
+    if (data.teamB) {
+      document.getElementById('team-b-name').value = data.teamB.name || 'Team B';
+      state.b = data.teamB.members || [];
+    }
+    renderMembers('a');
+    renderMembers('b');
+  } catch (e) {
+    // 壊れたデータは無視
+  }
+}
 
 function addMember(team) {
   const input = document.getElementById(`team-${team}-input`);
@@ -11,7 +41,6 @@ function addMember(team) {
 
   if (!raw) return;
 
-  // RiotID形式 (名前#タグ) のバリデーション
   if (!raw.includes('#')) {
     showStatus('RiotIDは「名前#タグ」の形式で入力してください', true);
     return;
@@ -39,12 +68,25 @@ function addMember(team) {
   state[team].push({ name, tag });
   input.value = '';
   renderMembers(team);
+  persist();
   showStatus('');
 }
 
 function removeMember(team, index) {
   state[team].splice(index, 1);
   renderMembers(team);
+  persist();
+}
+
+function resetTeams() {
+  state.a = [];
+  state.b = [];
+  document.getElementById('team-a-name').value = 'Team A';
+  document.getElementById('team-b-name').value = 'Team B';
+  renderMembers('a');
+  renderMembers('b');
+  persist();
+  showStatus('リセットしました');
 }
 
 function renderMembers(team) {
@@ -65,39 +107,27 @@ function renderMembers(team) {
   });
 }
 
-function saveTeams() {
-  const teamAName = document.getElementById('team-a-name').value.trim() || 'Team A';
-  const teamBName = document.getElementById('team-b-name').value.trim() || 'Team B';
-
-  const data = {
-    teamA: { name: teamAName, members: state.a },
-    teamB: { name: teamBName, members: state.b },
-  };
-
-  overwolf.extensions.current.getExtraObject('settings', (result) => {
-    if (result.status === 'success') {
-      result.object.set('teams', JSON.stringify(data), () => {
-        showStatus('設定を保存しました！');
-      });
-    }
-  });
-}
-
 function showStatus(msg, isError = false) {
   const el = document.getElementById('status-msg');
   el.textContent = msg;
   el.style.color = isError ? '#e05050' : '#60c060';
+  if (msg && !isError) {
+    setTimeout(() => { el.textContent = ''; }, 2000);
+  }
 }
 
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Enterキーでも追加できるように
 document.addEventListener('DOMContentLoaded', () => {
+  load();
+
   ['a', 'b'].forEach((team) => {
     document.getElementById(`team-${team}-input`).addEventListener('keydown', (e) => {
       if (e.key === 'Enter') addMember(team);
     });
+    // チーム名変更も自動保存
+    document.getElementById(`team-${team}-name`).addEventListener('input', persist);
   });
 });
