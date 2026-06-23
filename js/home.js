@@ -123,8 +123,30 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// ウィンドウ操作
+let currentWindowId = null;
+
+overwolf.windows.getCurrentWindow((result) => {
+  if (result.status === 'success') {
+    currentWindowId = result.window.id;
+  }
+});
+
+function minimizeWindow() {
+  overwolf.windows.minimize(currentWindowId, () => {});
+}
+
+function closeWindow() {
+  overwolf.windows.close(currentWindowId, () => {});
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   load();
+
+  // タイトルバードラッグ
+  document.getElementById('title-bar-drag').addEventListener('mousedown', () => {
+    overwolf.windows.dragMove(currentWindowId);
+  });
 
   ['a', 'b'].forEach((team) => {
     const input = document.getElementById(`team-${team}-input`);

@@ -10,13 +10,79 @@ body {
   font-family: 'Segoe UI', sans-serif;
   height: 100vh;
   margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* カスタムタイトルバー */
+#title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  flex-shrink: 0;
+  background: #0d0d1f;
+  border-bottom: 1px solid #2a2a4a;
+  padding: 0 8px 0 12px;
+}
+
+#title-bar-drag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  height: 100%;
+  cursor: move;
+}
+
+.title-icon {
+  width: 16px;
+  height: 16px;
+  image-rendering: pixelated;
+}
+
+.title-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f0c040;
+  letter-spacing: 0.5px;
+}
+
+#title-bar-controls {
+  display: flex;
+  gap: 2px;
+}
+
+#title-bar-controls button {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 14px;
+  width: 32px;
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+#btn-minimize:hover {
+  background: #2a2a4a;
+  color: #e0e0e0;
+}
+
+#btn-close:hover {
+  background: #c0392b;
+  color: #fff;
 }
 
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  padding: 24px 28px 16px;
+  flex: 1;
+  padding: 20px 28px 16px;
   overflow: hidden;
   user-select: none;
 }
