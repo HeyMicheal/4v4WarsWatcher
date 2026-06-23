@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>4v4WarsWatcher - チーム設定</title>
+  <link rel="stylesheet" href="css/home.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>4v4 Wars Watcher</h1>
+      <p class="subtitle">チームメンバーを設定してください</p>
+    </header>
+
+    <main>
+      <div class="teams-container">
+
+        <!-- Team A -->
+        <div class="team-card" id="team-a-card">
+          <div class="team-header team-a">
+            <span class="team-icon">⚔</span>
+            <input class="team-name-input" id="team-a-name" type="text" value="Team A" maxlength="16" />
+          </div>
+          <ul class="member-list" id="team-a-members"></ul>
+          <div class="add-member-row">
+            <input
+              type="text"
+              class="riot-id-input"
+              id="team-a-input"
+              placeholder="RiotID#JP1"
+              maxlength="64"
+            />
+            <button class="btn-add" onclick="addMember('a')">追加</button>
+          </div>
+        </div>
+
+        <!-- Team B -->
+        <div class="team-card" id="team-b-card">
+          <div class="team-header team-b">
+            <span class="team-icon">🛡</span>
+            <input class="team-name-input" id="team-b-name" type="text" value="Team B" maxlength="16" />
+          </div>
+          <ul class="member-list" id="team-b-members"></ul>
+          <div class="add-member-row">
+            <input
+              type="text"
+              class="riot-id-input"
+              id="team-b-input"
+              placeholder="RiotID#JP1"
+              maxlength="64"
+            />
+            <button class="btn-add" onclick="addMember('b')">追加</button>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <footer>
+      <span id="status-msg"></span>
+      <button class="btn-save" onclick="saveTeams()">設定を保存</button>
+    </footer>
+  </div>
+
+  <script src="js/home.js"></script>
+</body>
+</html>

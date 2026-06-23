@@ -28,6 +28,17 @@
           "height": 0
         }
       },
+      "home": {
+        "file": "home.html",
+        "transparent": false,
+        "resizable": false,
+        "show_in_taskbar": true,
+        "desktop_only": true,
+        "size": {
+          "width": 780,
+          "height": 600
+        }
+      },
       "in_game": {
         "file": "in_game.html",
         "transparent": true,

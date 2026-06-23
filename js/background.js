@@ -5,10 +5,19 @@ let inGameWindow = null;
 overwolf.extensions.onAppLaunchTriggered.addListener(openApp);
 
 async function openApp() {
+  openHomeWindow();
   const gameInfo = await getRunningGameInfo();
   if (gameInfo && gameInfo.classId === GAME_ID_TFT) {
     openInGameWindow();
   }
+}
+
+function openHomeWindow() {
+  overwolf.windows.obtainDeclaredWindow("home", (result) => {
+    if (result.status === "success") {
+      overwolf.windows.restore(result.window.id, () => {});
+    }
+  });
 }
 
 overwolf.games.onGameInfoUpdated.addListener((event) => {
