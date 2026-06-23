@@ -16,6 +16,10 @@
   ],
   "data": {
     "start_window": "background",
+    "game_targeting": {
+      "type": "dedicated",
+      "game_ids": [5426, 21570]
+    },
     "windows": {
       "background": {
         "file": "background.html",
@@ -46,11 +50,13 @@
         "resizable": false,
         "show_in_taskbar": false,
         "desktop_only": false,
+        "in_game_only": true,
         "size": {
           "width": 1920,
           "height": 1080
         },
-        "clickthrough": true
+        "clickthrough": true,
+        "isInputPassThrough": true
       }
     },
     "game_events": [21570]
