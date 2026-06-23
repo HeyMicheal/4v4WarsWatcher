@@ -21,9 +21,12 @@ body {
   user-select: none;
 }
 
-/* テキスト入力欄はuser-selectを解除してIMEが正常に動くようにする */
-input[type="text"] {
+/* contenteditable要素はuser-selectを解除 */
+[contenteditable="true"] {
   user-select: text;
+  -webkit-user-select: text;
+  outline: none;
+  cursor: text;
 }
 
 /* ヘッダー */
@@ -84,17 +87,19 @@ main {
 .team-name-input {
   background: transparent;
   border: none;
+  border-bottom: 1px solid transparent;
   color: #f0c040;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 1px;
-  width: 100%;
-  outline: none;
-  cursor: text;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .team-name-input:focus {
-  border-bottom: 1px solid #f0c040;
+  border-bottom-color: #f0c040;
 }
 
 /* メンバーリスト */
@@ -173,11 +178,19 @@ main {
   color: #e0e0e0;
   font-size: 13px;
   padding: 8px 10px;
-  outline: none;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
   transition: border-color 0.15s;
 }
 .riot-id-input:focus { border-color: #f0c040; }
-.riot-id-input::placeholder { color: #444; }
+
+/* placeholder の代替（contenteditable は ::placeholder 非対応） */
+.riot-id-input:empty::before {
+  content: attr(data-placeholder);
+  color: #444;
+  pointer-events: none;
+}
 
 .btn-add {
   background: #f0c040;

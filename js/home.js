@@ -6,10 +6,22 @@ const state = {
   b: [],
 };
 
+function getText(id) {
+  return document.getElementById(id).textContent.trim();
+}
+
+function setText(id, value) {
+  document.getElementById(id).textContent = value;
+}
+
+function clearText(id) {
+  document.getElementById(id).textContent = '';
+}
+
 function persist() {
   const data = {
-    teamA: { name: document.getElementById('team-a-name').value.trim() || 'Team A', members: state.a },
-    teamB: { name: document.getElementById('team-b-name').value.trim() || 'Team B', members: state.b },
+    teamA: { name: getText('team-a-name') || 'Team A', members: state.a },
+    teamB: { name: getText('team-b-name') || 'Team B', members: state.b },
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
@@ -21,11 +33,11 @@ function load() {
   try {
     const data = JSON.parse(raw);
     if (data.teamA) {
-      document.getElementById('team-a-name').value = data.teamA.name || 'Team A';
+      setText('team-a-name', data.teamA.name || 'Team A');
       state.a = data.teamA.members || [];
     }
     if (data.teamB) {
-      document.getElementById('team-b-name').value = data.teamB.name || 'Team B';
+      setText('team-b-name', data.teamB.name || 'Team B');
       state.b = data.teamB.members || [];
     }
     renderMembers('a');
@@ -36,8 +48,7 @@ function load() {
 }
 
 function addMember(team) {
-  const input = document.getElementById(`team-${team}-input`);
-  const raw = input.value.trim();
+  const raw = getText(`team-${team}-input`);
 
   if (!raw) return;
 
@@ -66,7 +77,7 @@ function addMember(team) {
   }
 
   state[team].push({ name, tag });
-  input.value = '';
+  clearText(`team-${team}-input`);
   renderMembers(team);
   persist();
   showStatus('');
@@ -80,7 +91,7 @@ function removeMember(team, index) {
 
 function resetTeam(team) {
   state[team] = [];
-  document.getElementById(`team-${team}-name`).value = team === 'a' ? 'Team A' : 'Team B';
+  setText(`team-${team}-name`, team === 'a' ? 'Team A' : 'Team B');
   renderMembers(team);
   persist();
 }
@@ -120,10 +131,35 @@ document.addEventListener('DOMContentLoaded', () => {
   load();
 
   ['a', 'b'].forEach((team) => {
-    document.getElementById(`team-${team}-input`).addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') addMember(team);
+    const input = document.getElementById(`team-${team}-input`);
+    const nameEl = document.getElementById(`team-${team}-name`);
+
+    // Enterキーで追加（改行を防ぐ）
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        addMember(team);
+      }
     });
-    // チーム名変更も自動保存
-    document.getElementById(`team-${team}-name`).addEventListener('input', persist);
+
+    // チーム名でもEnterで改行させない
+    nameEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        nameEl.blur();
+      }
+    });
+
+    // チーム名変更を自動保存
+    nameEl.addEventListener('input', persist);
+
+    // 貼り付け時にプレーンテキストのみ受け付ける
+    [input, nameEl].forEach((el) => {
+      el.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = e.clipboardData.getData('text/plain').replace(/\n/g, '');
+        document.execCommand('insertText', false, text);
+      });
+    });
   });
 });
