@@ -109,36 +109,51 @@ function updateFromRoster(raw) {
   }
 }
 
-// ── GEP イベント購読 ──
+// ── GEP イベント購読（イベントが来た場合の即時反映） ──
 overwolf.games.events.onInfoUpdates2.addListener((event) => {
-  console.log('[4v4Wars] onInfoUpdates2 feature:', event.feature);
-
   if (event.feature === 'live_client_data' && event.info?.live_client_data?.all_players) {
     updateFromAllPlayers(event.info.live_client_data.all_players);
   }
-
   if (event.feature === 'roster' && event.info?.roster?.player_status) {
     updateFromRoster(event.info.roster.player_status);
   }
 });
 
-// ── GEP フィーチャー登録 → 初期状態を即時取得 ──
+// ── getInfo ポーリング（5秒ごとに最新状態を取得） ──
+// TFT GEP はイベントが来ないことがあるため、ポーリングで補完する
+let pollInterval = null;
+
+function fetchAndApplyInfo() {
+  overwolf.games.events.getInfo((info) => {
+    if (!info?.res) return;
+
+    // デバッグ: rosterキーが来たかどうか確認
+    const hasRoster = !!info.res.roster?.player_status;
+    const hasAllPlayers = !!info.res.live_client_data?.all_players;
+    console.log('[4v4Wars] poll - hasAllPlayers:', hasAllPlayers, 'hasRoster:', hasRoster);
+
+    if (hasAllPlayers) {
+      updateFromAllPlayers(info.res.live_client_data.all_players);
+    }
+    if (hasRoster) {
+      console.log('[4v4Wars] roster.player_status:', JSON.stringify(info.res.roster.player_status));
+      updateFromRoster(info.res.roster.player_status);
+    }
+  });
+}
+
+function startPolling() {
+  fetchAndApplyInfo();
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(fetchAndApplyInfo, 5000);
+}
+
+// ── GEP フィーチャー登録 ──
 function registerFeatures(retryCount = 0) {
   overwolf.games.events.setRequiredFeatures(GEP_FEATURES, (result) => {
     console.log('[4v4Wars] setRequiredFeatures:', JSON.stringify(result));
     if (result.status === 'success') {
-      overwolf.games.events.getInfo((info) => {
-        console.log('[4v4Wars] getInfo res keys:', Object.keys(info?.res || {}));
-
-        // all_players で生存状態を初期化（必ず存在する）
-        if (info?.res?.live_client_data?.all_players) {
-          updateFromAllPlayers(info.res.live_client_data.all_players);
-        }
-        // roster があれば HP も初期化
-        if (info?.res?.roster?.player_status) {
-          updateFromRoster(info.res.roster.player_status);
-        }
-      });
+      startPolling();
     } else if (retryCount < 5) {
       setTimeout(() => registerFeatures(retryCount + 1), 2000);
     } else {
