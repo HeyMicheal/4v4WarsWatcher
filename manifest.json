@@ -5,7 +5,7 @@
     "name": "4v4WarsWatcher",
     "version": "0.1.0.0",
     "minimum-overwolf-version": "0.220.0",
-    "author": "",
+    "author": "HeyMicheal",
     "description": "TFT 4v4 観戦用オーバーレイアプリ"
   },
   "permissions": [
