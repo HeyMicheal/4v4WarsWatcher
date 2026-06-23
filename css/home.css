@@ -9,15 +9,21 @@ body {
   color: #e0e0e0;
   font-family: 'Segoe UI', sans-serif;
   height: 100vh;
-  overflow: hidden;
-  user-select: none;
+  margin: 0;
 }
 
 #app {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 100vh;
   padding: 24px 28px 16px;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* テキスト入力欄はuser-selectを解除してIMEが正常に動くようにする */
+input[type="text"] {
+  user-select: text;
 }
 
 /* ヘッダー */

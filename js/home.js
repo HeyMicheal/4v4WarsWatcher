@@ -83,7 +83,6 @@ function resetTeam(team) {
   document.getElementById(`team-${team}-name`).value = team === 'a' ? 'Team A' : 'Team B';
   renderMembers(team);
   persist();
-  showStatus(`Team ${team.toUpperCase()} をリセットしました`);
 }
 
 function renderMembers(team) {
