@@ -91,9 +91,15 @@ async function launchWorker() {
   const python = cfg.pythonCmd || 'pythonw';
   const dir = cfg.workerDir.replace(/[\\/]+$/, '');
   const script = dir + '\\worker.py';
-  launcher.Launch(python, '"' + script + '"', dir, (r) => {
+  // Overwolfのブリッジは非ASCII(日本語パス)でエラーになるためBase64で渡す
+  launcher.Launch(b64utf8(python), b64utf8('"' + script + '"'), b64utf8(dir), (r) => {
     console.log('[4v4Wars] worker launch:', JSON.stringify(r));
   });
+}
+
+// 文字列をUTF-8 Base64にエンコードする
+function b64utf8(s) {
+  return btoa(unescape(encodeURIComponent(s)));
 }
 
 async function killWorker() {

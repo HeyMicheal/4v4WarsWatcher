@@ -16,11 +16,20 @@ namespace FourV4Worker
         public Launcher() { }
         public Launcher(int hwnd) { }
 
+        // Overwolfのブリッジは非ASCII文字列でエラーになるため、引数はBase64(UTF-8)で受け取る
+        private static string DecodeB64(string b64)
+        {
+            if (string.IsNullOrEmpty(b64)) return "";
+            var bytes = Convert.FromBase64String(b64);
+            return System.Text.Encoding.UTF8.GetString(bytes);
+        }
+
         /// <summary>
         /// ワーカーを起動する（既に起動中なら何もしない）。
+        /// 各引数はJS側で Base64(UTF-8) にエンコードして渡すこと（日本語パス対策）。
         /// fileName 例: "pythonw"、arguments 例: "\"D:\\path\\worker.py\""、workingDir 例: "D:\\path"
         /// </summary>
-        public string Launch(string fileName, string arguments, string workingDir)
+        public string Launch(string fileNameB64, string argumentsB64, string workingDirB64)
         {
             try
             {
@@ -29,9 +38,9 @@ namespace FourV4Worker
 
                 var psi = new ProcessStartInfo
                 {
-                    FileName = fileName,
-                    Arguments = arguments,
-                    WorkingDirectory = workingDir,
+                    FileName = DecodeB64(fileNameB64),
+                    Arguments = DecodeB64(argumentsB64),
+                    WorkingDirectory = DecodeB64(workingDirB64),
                     UseShellExecute = false,
                     CreateNoWindow = true,
                 };
