@@ -1,15 +1,15 @@
 """
-OCRワーカー本体（案Y: 毎回フルOCR・3秒間隔）
+OCRワーカー本体
 
-TFTウィンドウをWGCで継続キャプチャし、一定間隔で：
-  1. 最新フレームから8行の名前・HPを読み取り
-  2. 登録プレイヤー（config.json）とファジー照合
-  3. チームごとの合計HP・生存人数を集計
-  4. 結果を output.json に書き出し（後でOverwolfがポーリング）
-  5. 1サイクルの所要時間を表示（実機が3秒に間に合うかの確認用）
+常駐してTFTの起動を待ち受け、TFTウィンドウをWGCでキャプチャしながら：
+  1. 名前画像テンプレート照合で各行が誰かを特定（初回のみEasyOCRで登録）
+  2. 各プレイヤーのHPをtesseractで読み取り（一括読みで高速）
+  3. チームごとの合計HPを集計
+  4. http://127.0.0.1:<port>/stats で配信（Overwolfオーバーレイが取得）
+チーム設定はホーム画面から POST /config で受け取る。生存判定はOverwolf GEP側。
 
 実行:
-    python worker.py
+    python worker.py     （Ctrl+Cで終了。自動起動はREADME参照）
 """
 
 import json
@@ -46,12 +46,14 @@ class _Tee:
         self.logfile = logfile
 
     def write(self, data):
-        self.stream.write(data)
+        if self.stream:  # pythonw起動時は stdout が None のことがある
+            self.stream.write(data)
         self.logfile.write(data)
         self.logfile.flush()
 
     def flush(self):
-        self.stream.flush()
+        if self.stream:
+            self.stream.flush()
         self.logfile.flush()
 
 
@@ -232,6 +234,21 @@ def frame_to_image(frame: Frame) -> Image.Image:
     return Image.fromarray(rgb)
 
 
+def window_exists(name):
+    """指定タイトルを含むウィンドウが存在するか。"""
+    try:
+        import pygetwindow as gw
+        return any(name in t for t in gw.getAllTitles() if t)
+    except Exception:
+        return False
+
+
+def wait_for_window(name, poll=2):
+    """指定ウィンドウが現れるまで待つ（Ctrl+Cで中断可能）。"""
+    while not window_exists(name):
+        time.sleep(poll)
+
+
 def main():
     setup_logging()
     ocr_engine.setup_tessdata()  # tesseractとtessdataを解決（ログに記録される）
@@ -261,15 +278,8 @@ def main():
     start_stats_server(http_port, lambda: latest["stats"], on_config)
     print(f"HTTP配信: http://127.0.0.1:{http_port}/stats （POST /config で設定更新）")
 
-    capture = WindowsCapture(
-        cursor_capture=None,
-        draw_border=None,
-        monitor_index=None,
-        window_name=WINDOW_NAME,
-    )
-
-    @capture.event
-    def on_frame_arrived(frame: Frame, capture_control: InternalCaptureControl):
+    def process_frame(frame):
+        """1フレームを処理して集計・配信する。"""
         tracker = state["tracker"]
         # フレームは高頻度で届くので、一定間隔に1回だけ処理する
         # 高速モード（テンプレ準備完了後）は短い間隔で回す
@@ -284,7 +294,7 @@ def main():
             print(f"警告: 解像度が {img.size} です（{EXPECTED_SIZE}前提）。座標がずれる可能性。")
             state["warned_size"] = True
 
-        # デバッグモード（set DEBUG=1）: 最初のフレームを保存し、生OCR結果を表示
+        # デバッグモード（set DEBUG=1）: 最初のフレームを保存し、割り当てを表示
         if DEBUG and not state.get("saved_frame"):
             dbg_path = os.path.join(HERE, "debug_frame.png")
             img.save(dbg_path)
@@ -325,12 +335,49 @@ def main():
         if dt > interval:
             print(f"  ※ サイクル({dt:.2f}秒)が間隔({interval}秒)を超過しています")
 
-    @capture.event
-    def on_closed():
-        print("キャプチャを終了しました")
+    def run_session():
+        """TFTウィンドウをキャプチャする（TFTが閉じるまでブロックする）。"""
+        capture = WindowsCapture(
+            cursor_capture=None,
+            draw_border=None,
+            monitor_index=None,
+            window_name=WINDOW_NAME,
+        )
 
-    print("OCR開始（Ctrl+Cで停止）...")
-    capture.start()
+        @capture.event
+        def on_frame_arrived(frame: Frame, capture_control: InternalCaptureControl):
+            process_frame(frame)
+
+        @capture.event
+        def on_closed():
+            print("キャプチャを終了しました")
+
+        capture.start()
+
+    # 常駐ループ: TFTを待ち受け、起動中はキャプチャ、終了したら待機に戻る
+    print("TFTの起動を待っています…（Ctrl+Cで終了）")
+    try:
+        while True:
+            wait_for_window(WINDOW_NAME)
+            print("TFTを検出。キャプチャを開始します。")
+            # 新しい試合用に状態をリセット（テンプレートを取り直す）
+            state["last"] = 0.0
+            state["warned_size"] = False
+            state.pop("saved_frame", None)
+            state["tracker"] = PlayerTracker(config)
+            try:
+                run_session()
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                # Ctrl+Cはライブラリ内で別例外に包まれることがあるので文字列で判定
+                if "KeyboardInterrupt" in str(e):
+                    raise KeyboardInterrupt
+                print(f"キャプチャが停止しました: {e}")
+            print("TFTの終了を待っています…")
+            time.sleep(3)
+    except KeyboardInterrupt:
+        print("終了します。")
 
 
 if __name__ == "__main__":
