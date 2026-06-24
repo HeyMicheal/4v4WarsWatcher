@@ -1,12 +1,13 @@
 # OCRワーカーに必要なパッケージ
 windows-capture
 pygetwindow
-pytesseract      # HP（数字）OCR
 easyocr          # 名前（日本語）OCR
 Pillow           # 画像前処理
 numpy            # 画像配列処理
 
 # 別途インストールが必要:
-#   Tesseract本体（pytesseractは本体のラッパー）
+#   Tesseract本体（HP数字の読み取りに使用。worker.pyが直接呼び出す）
 #   Windows: https://github.com/UB-Mannheim/tesseract/wiki からインストーラー入手
 #            日本語データ(jpn)も忘れずに選択
+#   PATHに無ければ環境変数で指定:
+#     set TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
