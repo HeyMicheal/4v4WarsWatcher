@@ -108,11 +108,13 @@ class PlayerTracker:
     """
 
     def __init__(self, config):
-        self.config = config
         self.init_score = config.get("init_match_score", INIT_MATCH_SCORE)
-        self.all_members = (
-            config["teamA"]["members"] + config["teamB"]["members"]
-        )
+        # 設定はスナップショットを持つ（外部のconfig辞書が後で書き換わっても影響を受けない）
+        self.team_a = {"name": config["teamA"]["name"],
+                       "members": list(config["teamA"]["members"])}
+        self.team_b = {"name": config["teamB"]["name"],
+                       "members": list(config["teamB"]["members"])}
+        self.all_members = self.team_a["members"] + self.team_b["members"]
         self.last_hp = {m: None for m in self.all_members}   # member -> HP
         self.templates = {}        # member -> 名前画像マスク
         self.initialized = False   # 全員のテンプレートが揃ったか
@@ -141,8 +143,8 @@ class PlayerTracker:
         return assign, {
             "updated": datetime.now().isoformat(timespec="seconds"),
             "initialized": self.initialized,
-            "teamA": self._team_stat(self.config["teamA"]),
-            "teamB": self._team_stat(self.config["teamB"]),
+            "teamA": self._team_stat(self.team_a),
+            "teamB": self._team_stat(self.team_b),
         }
 
     def _init_templates(self, img, masks, non_empty):
@@ -207,7 +209,7 @@ class PlayerTracker:
         total_hp = 0
         known = 0
         for m in team["members"]:
-            hp = self.last_hp[m]
+            hp = self.last_hp.get(m)
             if hp is not None:
                 total_hp += hp
                 known += 1
