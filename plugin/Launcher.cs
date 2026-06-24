@@ -7,6 +7,10 @@ namespace FourV4Worker
     /// Overwolfから外部プロセス（OCRワーカー）を起動・停止するためのプラグイン。
     /// JSからは overwolf.extensions.current.getExtraObject("worker-launcher", ...) で取得し、
     /// Launch(...) / Kill() を呼ぶ。
+    ///
+    /// Overwolfの規約: メソッドの最後の引数は Action&lt;object&gt; のコールバックにする。
+    /// 結果はコールバックで返す（戻り値ではなく）。引数は全て必須。
+    /// 文字列引数はJS側で Base64(UTF-8) にして渡し、ここでデコードする（日本語パス対策）。
     /// </summary>
     public class Launcher
     {
@@ -16,7 +20,6 @@ namespace FourV4Worker
         public Launcher() { }
         public Launcher(int hwnd) { }
 
-        // Overwolfのブリッジは非ASCII文字列でエラーになるため、引数はBase64(UTF-8)で受け取る
         private static string DecodeB64(string b64)
         {
             if (string.IsNullOrEmpty(b64)) return "";
@@ -25,16 +28,18 @@ namespace FourV4Worker
         }
 
         /// <summary>
-        /// ワーカーを起動する（既に起動中なら何もしない）。
-        /// 各引数はJS側で Base64(UTF-8) にエンコードして渡すこと（日本語パス対策）。
-        /// fileName 例: "pythonw"、arguments 例: "\"D:\\path\\worker.py\""、workingDir 例: "D:\\path"
+        /// ワーカーを起動する（既に起動中なら何もしない）。各引数は Base64(UTF-8)。
         /// </summary>
-        public string Launch(string fileNameB64, string argumentsB64, string workingDirB64)
+        public void Launch(string fileNameB64, string argumentsB64, string workingDirB64,
+                           Action<object> callback)
         {
             try
             {
                 if (_process != null && !_process.HasExited)
-                    return "already-running";
+                {
+                    callback("already-running");
+                    return;
+                }
 
                 var psi = new ProcessStartInfo
                 {
@@ -45,34 +50,34 @@ namespace FourV4Worker
                     CreateNoWindow = true,
                 };
                 _process = Process.Start(psi);
-                return "started";
+                callback("started");
             }
             catch (Exception e)
             {
-                return "error: " + e.Message;
+                callback("error: " + e.Message);
             }
         }
 
         /// <summary>起動中のワーカーを停止する。</summary>
-        public string Kill()
+        public void Kill(Action<object> callback)
         {
             try
             {
                 if (_process != null && !_process.HasExited)
                     _process.Kill();
                 _process = null;
-                return "killed";
+                callback("killed");
             }
             catch (Exception e)
             {
-                return "error: " + e.Message;
+                callback("error: " + e.Message);
             }
         }
 
-        /// <summary>ワーカーが起動中かどうか。</summary>
-        public bool IsRunning()
+        /// <summary>ワーカーが起動中かどうかをコールバックで返す。</summary>
+        public void IsRunning(Action<object> callback)
         {
-            return _process != null && !_process.HasExited;
+            callback(_process != null && !_process.HasExited);
         }
     }
 }
