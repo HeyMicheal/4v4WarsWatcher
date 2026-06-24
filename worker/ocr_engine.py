@@ -28,12 +28,40 @@ _COMMON_TESS_PATHS = [
 ]
 
 
+def _is_ascii(s):
+    try:
+        s.encode("ascii")
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
+def _ensure_ascii_tessdata(tessdata):
+    """
+    tessdataパスに日本語等の非ASCII文字が含まれる場合、tesseract(mingw)が
+    扱えないため、必要な言語データをASCIIパスの一時フォルダへコピーして
+    そのフォルダパスを返す。ASCIIならそのまま返す。
+    """
+    if _is_ascii(tessdata):
+        return tessdata
+
+    ascii_dir = os.path.join(tempfile.gettempdir(), "4v4_tessdata")
+    os.makedirs(ascii_dir, exist_ok=True)
+    for lang in ("eng.traineddata", "jpn.traineddata"):
+        src = os.path.join(tessdata, lang)
+        dst = os.path.join(ascii_dir, lang)
+        if os.path.isfile(src) and not os.path.isfile(dst):
+            shutil.copy2(src, dst)
+    print(f"非ASCIIパスのため言語データをASCIIへコピー: {ascii_dir}")
+    return ascii_dir
+
+
 def setup_tessdata():
     """
     tesseract.exe を探し、その隣の tessdata を TESSDATA_PREFIX に強制設定する。
 
-    PCに永続設定された誤った TESSDATA_PREFIX（古い設定の残骸）があると
-    'Failed loading language' で失敗するため、正しい場所が見つかれば必ず上書きする。
+    - PCに永続設定された誤った TESSDATA_PREFIX があれば上書きする
+    - パスに日本語が含まれると tesseract が読めないため、ASCIIパスへ退避する
     worker側でログ設定後に呼ぶことで、結果が worker.log にも残る。
     """
     global TESS_CMD
@@ -49,19 +77,22 @@ def setup_tessdata():
         TESS_CMD = cmd
     print(f"tesseract: {TESS_CMD}")
 
-    # 2) 隣の tessdata を TESSDATA_PREFIX に強制設定
+    # 2) 隣の tessdata を見つける
     tessdata = os.path.join(os.path.dirname(TESS_CMD), "tessdata")
-    if os.path.isdir(tessdata):
-        prev = os.environ.get("TESSDATA_PREFIX")
-        os.environ["TESSDATA_PREFIX"] = tessdata
-        eng = os.path.join(tessdata, "eng.traineddata")
-        print(f"TESSDATA_PREFIX = {tessdata}（eng有無: {os.path.isfile(eng)}）")
-        if prev and prev != tessdata:
-            print(f"  ※ 既存の誤った値を上書きしました: {prev}")
-    else:
+    if not os.path.isdir(tessdata):
         print(f"警告: tessdataフォルダが見つかりません → {tessdata}")
         print("  Tesseract本体が未インストール、または別の場所にあります。")
         print("  set TESSERACT_CMD=（tesseract.exeのフルパス）で指定してください。")
+        return
+
+    # 3) 日本語パス対策（ASCIIへ退避）してから TESSDATA_PREFIX に強制設定
+    tessdata = _ensure_ascii_tessdata(tessdata)
+    prev = os.environ.get("TESSDATA_PREFIX")
+    os.environ["TESSDATA_PREFIX"] = tessdata
+    eng = os.path.join(tessdata, "eng.traineddata")
+    print(f"TESSDATA_PREFIX = {tessdata}（eng有無: {os.path.isfile(eng)}）")
+    if prev and prev != tessdata:
+        print(f"  ※ 既存の誤った値を上書きしました: {prev}")
 
 # 8行の中心Y座標（1920x1080固定）
 ROW_CENTERS = [216, 288, 360, 432, 504, 576, 648, 720]
