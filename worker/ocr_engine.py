@@ -80,15 +80,37 @@ def read_hp(img, cy):
         return None
 
 
+_logged = set()  # 同じ種類のエラーは1回だけ詳細表示する
+
+
+def _log_once(kind, exc):
+    """エラーの詳細トレースを種類ごとに最初の1回だけ表示する。"""
+    if kind in _logged:
+        return
+    _logged.add(kind)
+    import traceback
+    print(f"\n[OCRエラー: {kind}] {type(exc).__name__}: {exc}")
+    print(traceback.format_exc())
+
+
 def read_rows(img):
     """
     8行すべてを読み取り、[(name_raw, hp), ...] を返す。
     img は 1920x1080 のPIL.Image（RGB）。
+    名前・HPは個別に例外処理し、片方が失敗してももう片方は読む。
     """
     rows = []
     for cy in ROW_CENTERS:
-        name = read_name(img, cy)
-        hp = read_hp(img, cy)
+        try:
+            name = read_name(img, cy)
+        except Exception as e:
+            name = ""
+            _log_once("name(EasyOCR)", e)
+        try:
+            hp = read_hp(img, cy)
+        except Exception as e:
+            hp = None
+            _log_once("hp(tesseract)", e)
         rows.append((name, hp))
     return rows
 

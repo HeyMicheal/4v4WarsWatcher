@@ -119,10 +119,20 @@ def main():
             print(f"警告: 解像度が {img.size} です（{EXPECTED_SIZE}前提）。座標がずれる可能性。")
             state["warned_size"] = True
 
-        t0 = time.time()
-        rows = ocr_engine.read_rows(img)
-        stats = build_stats(rows, config)
-        dt = time.time() - t0
+        # OCR処理は例外で全体を落とさず、詳細をログに残して継続する
+        try:
+            t0 = time.time()
+            rows = ocr_engine.read_rows(img)
+            stats = build_stats(rows, config)
+            dt = time.time() - t0
+        except Exception:
+            import traceback
+            tb = traceback.format_exc()
+            print("OCR処理でエラーが発生しました（詳細は worker_error.log）:")
+            print(tb)
+            with open(os.path.join(HERE, "worker_error.log"), "a", encoding="utf-8") as f:
+                f.write(f"\n--- {datetime.now().isoformat()} ---\n{tb}\n")
+            return
 
         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
             json.dump(stats, f, ensure_ascii=False, indent=2)
