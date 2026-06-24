@@ -63,15 +63,29 @@ def setup_logging():
     print(f"ログ出力先: {LOG_PATH}")
 
 
+DEFAULT_CONFIG = {
+    "teamA": {"name": "Team A", "members": []},
+    "teamB": {"name": "Team B", "members": []},
+    "match_threshold": 0.45,
+    "interval_seconds": 3,
+    "fast_interval_seconds": 0.5,
+    "http_port": 17653,
+}
+
+
 def load_config():
-    """config.json を読み込む。なければ説明を出して終了。"""
+    """config.json を読み込む。なければ既定値（メンバー空）で起動し、ホーム画面からの設定を待つ。"""
     if not os.path.exists(CONFIG_PATH):
-        raise SystemExit(
-            "config.json がありません。\n"
-            "→ config.example.json を config.json にコピーして、登録プレイヤー名を編集してください。"
-        )
+        print("config.json がありません。ホーム画面からの設定を待ちます。")
+        return dict(DEFAULT_CONFIG)
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return json.load(f)
+        return {**DEFAULT_CONFIG, **json.load(f)}
+
+
+def save_config(config):
+    """config を config.json に書き出す。"""
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
 
 
 # テンプレート照合で行をプレイヤーに割り当てる最低類似度
@@ -224,10 +238,23 @@ def main():
     print(f"設定読み込み完了。初期化中{init_interval}秒 / 高速モード{fast_interval}秒間隔。")
     print(f"ウィンドウ: '{WINDOW_NAME}'")
 
-    # 最新の集計をHTTPで配信（Overwolfがポーリングする）
     latest = {"stats": {"initialized": False}}
-    start_stats_server(http_port, lambda: latest["stats"])
-    print(f"HTTP配信: http://127.0.0.1:{http_port}/stats")
+    state = {"last": 0.0, "warned_size": False, "tracker": PlayerTracker(config)}
+
+    def on_config(team_config):
+        """ホーム画面から送られたチーム設定を反映し、config.jsonを更新する。"""
+        config["teamA"] = team_config.get("teamA", config["teamA"])
+        config["teamB"] = team_config.get("teamB", config["teamB"])
+        save_config(config)
+        # 新しいロスターでトラッカーを作り直す（テンプレートを取り直す）
+        state["tracker"] = PlayerTracker(config)
+        n = len(config["teamA"]["members"]) + len(config["teamB"]["members"])
+        print(f"設定を更新しました（{n}人）。テンプレートを再取得します。")
+        return config
+
+    # 最新の集計をHTTPで配信し、設定POSTも受け付ける（Overwolfと連携）
+    start_stats_server(http_port, lambda: latest["stats"], on_config)
+    print(f"HTTP配信: http://127.0.0.1:{http_port}/stats （POST /config で設定更新）")
 
     capture = WindowsCapture(
         cursor_capture=None,
@@ -236,11 +263,9 @@ def main():
         window_name=WINDOW_NAME,
     )
 
-    state = {"last": 0.0, "warned_size": False}
-    tracker = PlayerTracker(config)
-
     @capture.event
     def on_frame_arrived(frame: Frame, capture_control: InternalCaptureControl):
+        tracker = state["tracker"]
         # フレームは高頻度で届くので、一定間隔に1回だけ処理する
         # 高速モード（テンプレ準備完了後）は短い間隔で回す
         interval = fast_interval if tracker.initialized else init_interval

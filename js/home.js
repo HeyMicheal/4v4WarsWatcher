@@ -14,12 +14,31 @@ function setVal(id, value) {
   document.getElementById(id).value = value;
 }
 
+// Pythonワーカーの設定更新先（worker/config.json の http_port と合わせる）
+const WORKER_CONFIG_URL = 'http://127.0.0.1:17653/config';
+
 function persist() {
   const data = {
     teamA: { name: getVal('team-a-name') || 'Team A', members: state.a },
     teamB: { name: getVal('team-b-name') || 'Team B', members: state.b },
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  sendToWorker(data);
+}
+
+// ワーカーへ設定を送る。membersはRiotIDのゲーム名部分（#タグより前）にする。
+function sendToWorker(data) {
+  const payload = {
+    teamA: { name: data.teamA.name, members: data.teamA.members.map((m) => m.name) },
+    teamB: { name: data.teamB.name, members: data.teamB.members.map((m) => m.name) },
+  };
+  fetch(WORKER_CONFIG_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => {
+    // ワーカー未起動などは無視（localStorageには保存済み）
+  });
 }
 
 function load() {
