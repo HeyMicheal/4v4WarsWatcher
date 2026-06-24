@@ -59,6 +59,7 @@ function renderTeam(side, team) {
 
   nameEl.textContent = team.name || nameEl.textContent;
   hpEl.textContent = (team.totalHp ?? '--');
+  if (team.color) panel.style.borderTopColor = team.color;  // チームカラーを枠上部に反映
 
   // 生存数: ワーカーが持つメンバーのうち、GEPで脱落していない人数
   const members = team.members || [];

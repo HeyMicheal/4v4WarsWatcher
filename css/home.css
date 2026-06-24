@@ -151,6 +151,17 @@ main {
   font-size: 18px;
 }
 
+.team-color-input {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #44446a;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
 .team-name-input {
   background: transparent;
   border: none;

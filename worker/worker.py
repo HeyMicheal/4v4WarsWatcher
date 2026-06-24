@@ -64,8 +64,8 @@ def setup_logging():
 
 
 DEFAULT_CONFIG = {
-    "teamA": {"name": "Team A", "members": []},
-    "teamB": {"name": "Team B", "members": []},
+    "teamA": {"name": "Team A", "members": [], "color": "#4a90d9"},
+    "teamB": {"name": "Team B", "members": [], "color": "#d9604a"},
     "match_threshold": 0.45,
     "interval_seconds": 3,
     "fast_interval_seconds": 0.5,
@@ -111,9 +111,11 @@ class PlayerTracker:
         self.init_score = config.get("init_match_score", INIT_MATCH_SCORE)
         # 設定はスナップショットを持つ（外部のconfig辞書が後で書き換わっても影響を受けない）
         self.team_a = {"name": config["teamA"]["name"],
-                       "members": list(config["teamA"]["members"])}
+                       "members": list(config["teamA"]["members"]),
+                       "color": config["teamA"].get("color", "#4a90d9")}
         self.team_b = {"name": config["teamB"]["name"],
-                       "members": list(config["teamB"]["members"])}
+                       "members": list(config["teamB"]["members"]),
+                       "color": config["teamB"].get("color", "#d9604a")}
         self.all_members = self.team_a["members"] + self.team_b["members"]
         self.last_hp = {m: None for m in self.all_members}   # member -> HP
         self.templates = {}        # member -> 名前画像マスク
@@ -216,6 +218,7 @@ class PlayerTracker:
             members.append({"name": m, "hp": hp})
         return {
             "name": team["name"],
+            "color": team["color"],
             "totalHp": total_hp,
             "hpKnown": known,  # HPが取得できている人数（生存数ではない）
             "members": members,

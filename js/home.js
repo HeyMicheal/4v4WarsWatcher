@@ -19,18 +19,22 @@ const WORKER_CONFIG_URL = 'http://127.0.0.1:17653/config';
 
 function persist() {
   const data = {
-    teamA: { name: getVal('team-a-name') || 'Team A', members: state.a },
-    teamB: { name: getVal('team-b-name') || 'Team B', members: state.b },
+    teamA: { name: getVal('team-a-name') || 'Team A', members: state.a, color: getColor('a') },
+    teamB: { name: getVal('team-b-name') || 'Team B', members: state.b, color: getColor('b') },
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   sendToWorker(data);
 }
 
+function getColor(team) {
+  return document.getElementById(`team-${team}-color`).value;
+}
+
 // ワーカーへ設定を送る。membersはRiotIDのゲーム名部分（#タグより前）にする。
 function sendToWorker(data) {
   const payload = {
-    teamA: { name: data.teamA.name, members: data.teamA.members.map((m) => m.name) },
-    teamB: { name: data.teamB.name, members: data.teamB.members.map((m) => m.name) },
+    teamA: { name: data.teamA.name, members: data.teamA.members.map((m) => m.name), color: data.teamA.color },
+    teamB: { name: data.teamB.name, members: data.teamB.members.map((m) => m.name), color: data.teamB.color },
   };
   fetch(WORKER_CONFIG_URL, {
     method: 'POST',
@@ -50,10 +54,12 @@ function load() {
     if (data.teamA) {
       setVal('team-a-name', data.teamA.name || 'Team A');
       state.a = data.teamA.members || [];
+      if (data.teamA.color) document.getElementById('team-a-color').value = data.teamA.color;
     }
     if (data.teamB) {
       setVal('team-b-name', data.teamB.name || 'Team B');
       state.b = data.teamB.members || [];
+      if (data.teamB.color) document.getElementById('team-b-color').value = data.teamB.color;
     }
     renderMembers('a');
     renderMembers('b');
@@ -188,5 +194,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // チーム名変更を自動保存
     nameEl.addEventListener('input', persist);
+
+    // チームカラー変更を自動保存
+    document.getElementById(`team-${team}-color`).addEventListener('input', persist);
   });
 });
