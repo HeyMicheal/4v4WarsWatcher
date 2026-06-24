@@ -20,12 +20,30 @@ import numpy as np
 # 例: set TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
 TESS_CMD = os.environ.get("TESSERACT_CMD", "tesseract")
 
-# TESSDATA_PREFIX 未設定なら、tesseract.exe と同じフォルダの tessdata を自動指定。
-# （これが無いと eng.traineddata が見つからずエラーになる）
-if os.environ.get("TESSERACT_CMD") and not os.environ.get("TESSDATA_PREFIX"):
-    _tessdata = os.path.join(os.path.dirname(TESS_CMD), "tessdata")
-    if os.path.isdir(_tessdata):
-        os.environ["TESSDATA_PREFIX"] = _tessdata
+
+def _setup_tessdata():
+    """
+    tesseract.exe の隣の tessdata フォルダを TESSDATA_PREFIX に強制設定する。
+
+    既存の TESSDATA_PREFIX が誤った場所を指している（古い set の残骸など）と
+    'Failed loading language' で失敗するため、正しい場所が見つかれば上書きする。
+    """
+    if not os.environ.get("TESSERACT_CMD"):
+        return  # PATH上のtesseractを使う場合は触らない
+    tessdata = os.path.join(os.path.dirname(TESS_CMD), "tessdata")
+    if os.path.isdir(tessdata):
+        prev = os.environ.get("TESSDATA_PREFIX")
+        os.environ["TESSDATA_PREFIX"] = tessdata
+        eng = os.path.join(tessdata, "eng.traineddata")
+        print(f"TESSDATA_PREFIX = {tessdata}（eng有無: {os.path.isfile(eng)}）")
+        if prev and prev != tessdata:
+            print(f"  ※ 既存の誤った値を上書きしました: {prev}")
+    else:
+        print(f"警告: tessdataフォルダが見つかりません → {tessdata}")
+        print("  TESSERACT_CMD が正しいtesseract.exeを指しているか確認してください。")
+
+
+_setup_tessdata()
 
 # 8行の中心Y座標（1920x1080固定）
 ROW_CENTERS = [216, 288, 360, 432, 504, 576, 648, 720]
