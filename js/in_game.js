@@ -1,17 +1,15 @@
 // オーバーレイ表示ロジック
 //   HP・チーム名・メンバー → Pythonワーカーの /stats (HTTP) から取得
 //   生存/脱落          → Overwolf GEP (live_client_data.all_players の isDead)
-//   ステージ            → GEP (match_info.round_type)
 
 // ワーカーのHTTP配信先（worker/config.json の http_port と合わせる）
 const WORKER_URL = 'http://127.0.0.1:17653/stats';
 const POLL_MS = 500;
 
-const GEP_FEATURES = ['live_client_data', 'match_info'];
+const GEP_FEATURES = ['live_client_data'];
 
 let workerStats = null;     // ワーカーから取得した最新の集計
 let deadByName = {};        // プレイヤー名(小文字) -> 脱落しているか
-let stage = '--';
 
 // ── ワーカーからHPを取得 ──
 async function pollWorker() {
@@ -39,20 +37,10 @@ function updateFromAllPlayers(raw) {
   }
 }
 
-function updateStage(raw) {
-  try {
-    const rt = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    stage = rt?.stage || '--';
-  } catch (e) {
-    // ステージ更新失敗は無視
-  }
-}
-
 // ── 表示更新 ──
 function render() {
   renderTeam('a', workerStats?.teamA);
   renderTeam('b', workerStats?.teamB);
-  document.getElementById('stage-value').textContent = stage;
 }
 
 function renderTeam(side, team) {
@@ -84,20 +72,14 @@ overwolf.games.events.onInfoUpdates2.addListener((event) => {
   if (event.feature === 'live_client_data' && event.info?.live_client_data?.all_players) {
     updateFromAllPlayers(event.info.live_client_data.all_players);
   }
-  if (event.feature === 'match_info' && event.info?.match_info?.round_type) {
-    updateStage(event.info.match_info.round_type);
-  }
 });
 
-// ── GEP getInfo ポーリング（生存・ステージの取りこぼし対策） ──
+// ── GEP getInfo ポーリング（生存の取りこぼし対策） ──
 function fetchGepInfo() {
   overwolf.games.events.getInfo((info) => {
     if (!info?.res) return;
     if (info.res.live_client_data?.all_players) {
       updateFromAllPlayers(info.res.live_client_data.all_players);
-    }
-    if (info.res.match_info?.round_type) {
-      updateStage(info.res.match_info.round_type);
     }
   });
 }

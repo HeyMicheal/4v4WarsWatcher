@@ -92,26 +92,6 @@ body {
   color: #ffffff;
 }
 
-/* ── ステージ表示（中央） ── */
-#stage-panel {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(10, 10, 24, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 6px;
-  padding: 4px 14px 6px;
-  text-align: center;
-}
-
-#stage-value {
-  font-size: 16px;
-  font-weight: 700;
-  color: #ccc;
-  letter-spacing: 1px;
-}
-
 /* 全滅時にパネルを暗くする */
 .team-panel.eliminated {
   opacity: 0.45;
