@@ -106,7 +106,8 @@ NAME_TH = 170
 HP_WHITE_TH = 130   # HP数字: min(R,G,B)がこれ以上を白文字とみなす（金枠を除外）
 
 # HPの妥当範囲。これを外れたOCR結果は誤読として無効化する
-HP_MIN, HP_MAX = 0, 100
+# （このモードではHPは150程度まで上がりうる）
+HP_MIN, HP_MAX = 0, 150
 
 _reader = None  # EasyOCRリーダー（初回ロードが重いので使い回す）
 

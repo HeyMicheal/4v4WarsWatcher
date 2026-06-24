@@ -73,18 +73,13 @@ def load_config():
         return json.load(f)
 
 
-# 連続でこの回数フレームに現れなければ「脱落」とみなす
-# （TFTでは脱落プレイヤーはリストから消える。OCRの一時的な照合失敗で
-#   誤って脱落扱いしないよう、数フレームの猶予を持たせる）
-DEAD_AFTER_MISSES = 3
-
-
 class PlayerTracker:
     """
-    フレームをまたいでプレイヤーの状態を保持する。
+    フレームをまたいで各プレイヤーのHPを保持する。
 
-    - HPは有効値が読めたときだけ更新（直前の有効値を保持＝一時的な誤読に強い）
-    - 名前照合が一時的に失敗しても、連続DEAD_AFTER_MISSES回まで生存とみなす
+    生存判定はOverwolf GEP側で行うため、ここはHP読み取りに専念する。
+    HPは有効値が読めたときだけ更新し、直前の有効値を保持する
+    （一時的な誤読・照合失敗があっても直近のHPを維持できる）。
     """
 
     def __init__(self, config):
@@ -93,31 +88,17 @@ class PlayerTracker:
         self.all_members = (
             config["teamA"]["members"] + config["teamB"]["members"]
         )
-        # member -> {hp, misses, seen}
-        self.state = {
-            m: {"hp": None, "misses": DEAD_AFTER_MISSES, "seen": False}
-            for m in self.all_members
-        }
+        self.last_hp = {m: None for m in self.all_members}  # member -> HP
 
     def update(self, rows):
-        """OCR結果で状態を更新し、チーム集計を返す。"""
-        # 各行を最も近い登録名へ割り当て（HPが読めた行を優先）
-        matched = {}
+        """OCR結果でHPを更新し、チームごとのHP集計を返す。"""
+        # 各行を最も近い登録名へ割り当て、有効HPのみ採用
         for name_raw, hp in rows:
-            cand, score = ocr_engine.fuzzy_match(name_raw, self.all_members)
-            if score < self.threshold or cand is None:
+            if hp is None:
                 continue
-            if cand not in matched or (matched[cand] is None and hp is not None):
-                matched[cand] = hp
-
-        for m, st in self.state.items():
-            if m in matched:
-                st["misses"] = 0
-                st["seen"] = True
-                if matched[m] is not None:
-                    st["hp"] = matched[m]  # 有効HPのみ更新
-            else:
-                st["misses"] += 1
+            cand, score = ocr_engine.fuzzy_match(name_raw, self.all_members)
+            if score >= self.threshold and cand is not None:
+                self.last_hp[cand] = hp
 
         return {
             "updated": datetime.now().isoformat(timespec="seconds"),
@@ -125,29 +106,20 @@ class PlayerTracker:
             "teamB": self._team_stat(self.config["teamB"]),
         }
 
-    def _is_alive(self, st):
-        # 一度も観測できていなければ不明（生存に数えない）
-        if not st["seen"]:
-            return False
-        return st["misses"] < DEAD_AFTER_MISSES
-
     def _team_stat(self, team):
         members = []
         total_hp = 0
-        alive = 0
+        known = 0
         for m in team["members"]:
-            st = self.state[m]
-            is_alive = self._is_alive(st)
-            hp = st["hp"]
-            if is_alive:
-                alive += 1
-                if hp is not None:
-                    total_hp += hp
-            members.append({"name": m, "hp": hp, "alive": is_alive})
+            hp = self.last_hp[m]
+            if hp is not None:
+                total_hp += hp
+                known += 1
+            members.append({"name": m, "hp": hp})
         return {
             "name": team["name"],
             "totalHp": total_hp,
-            "alive": alive,
+            "hpKnown": known,  # HPが取得できている人数（生存数ではない）
             "members": members,
         }
 
@@ -222,8 +194,8 @@ def main():
         a, b = stats["teamA"], stats["teamB"]
         print(
             f"[{stats['updated']}] サイクル {dt:.2f}秒  "
-            f"| {a['name']}: HP{a['totalHp']} 生存{a['alive']}/4  "
-            f"| {b['name']}: HP{b['totalHp']} 生存{b['alive']}/4"
+            f"| {a['name']}: HP{a['totalHp']} (読取{a['hpKnown']}/4)  "
+            f"| {b['name']}: HP{b['totalHp']} (読取{b['hpKnown']}/4)"
         )
         if dt > interval:
             print(f"  ※ サイクル({dt:.2f}秒)が間隔({interval}秒)を超過しています")
