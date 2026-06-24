@@ -26,9 +26,12 @@ WINDOW_NAME = "League of Legends (TM) Client"
 OUTPUT_PATH = "capture.png"
 
 
+# 注意: cursor_capture / draw_border を True/False で明示指定すると、
+# 一部のWindowsバージョンで「Toggling ... is not supported」エラーになる。
+# None にしてOS既定の挙動に任せると回避できる。
 capture = WindowsCapture(
-    cursor_capture=False,   # マウスカーソルは写さない
-    draw_border=False,      # キャプチャ枠線を描画しない
+    cursor_capture=None,
+    draw_border=None,
     monitor_index=None,
     window_name=WINDOW_NAME,
 )
