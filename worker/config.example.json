@@ -9,5 +9,6 @@
     "members": ["ちんもくはる", "12番中山", "rikutattun", "カタリスト加藤"]
   },
   "match_threshold": 0.45,
-  "interval_seconds": 3
+  "interval_seconds": 3,
+  "fast_interval_seconds": 0.5
 }

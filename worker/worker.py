@@ -117,11 +117,11 @@ class PlayerTracker:
         # 行→プレイヤーの割り当て（テンプレートがある分だけ）
         assign = self._assign(masks, non_empty)
 
-        # 割り当てた行のHPを読んで更新
+        # 割り当てた行のHPを一括で読んで更新
+        hps = ocr_engine.read_hps(img, list(assign.keys()))
         for slot, member in assign.items():
-            hp = ocr_engine.read_hp(img, ocr_engine.ROW_CENTERS[slot])
-            if hp is not None:
-                self.last_hp[member] = hp
+            if hps.get(slot) is not None:
+                self.last_hp[member] = hps[slot]
 
         return assign, {
             "updated": datetime.now().isoformat(timespec="seconds"),
@@ -197,8 +197,10 @@ def main():
     setup_logging()
     ocr_engine.setup_tessdata()  # tesseractとtessdataを解決（ログに記録される）
     config = load_config()
-    interval = config.get("interval_seconds", 3)
-    print(f"設定読み込み完了。{interval}秒間隔でOCRします。")
+    # 初期化中（EasyOCRで重い）と高速モードで間隔を分ける
+    init_interval = config.get("interval_seconds", 3)
+    fast_interval = config.get("fast_interval_seconds", 0.5)
+    print(f"設定読み込み完了。初期化中{init_interval}秒 / 高速モード{fast_interval}秒間隔。")
     print(f"ウィンドウ: '{WINDOW_NAME}'")
 
     capture = WindowsCapture(
@@ -213,7 +215,9 @@ def main():
 
     @capture.event
     def on_frame_arrived(frame: Frame, capture_control: InternalCaptureControl):
-        # フレームは高頻度で届くので、interval秒に1回だけ処理する
+        # フレームは高頻度で届くので、一定間隔に1回だけ処理する
+        # 高速モード（テンプレ準備完了後）は短い間隔で回す
+        interval = fast_interval if tracker.initialized else init_interval
         now = time.time()
         if now - state["last"] < interval:
             return

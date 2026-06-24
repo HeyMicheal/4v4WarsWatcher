@@ -188,9 +188,9 @@ _NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 _tess_err_logged = False
 
 
-def _tesseract_digits(binimg):
+def _run_tesseract(image):
     """
-    二値化画像をtesseractに渡し、認識した数字文字列を返す。
+    数字用の設定でtesseractを実行し、stdout全文を返す。
 
     pytesseractを使わず直接呼び出す。一時ファイルはシステムtemp（ASCIIパス）に
     作り、作業ディレクトリもそこにすることで、日本語パス(D:\\仕事\\..)が
@@ -200,7 +200,7 @@ def _tesseract_digits(binimg):
     global _tess_err_logged
     with tempfile.TemporaryDirectory() as td:
         in_path = os.path.join(td, "hp.png")
-        binimg.save(in_path)
+        image.save(in_path)
         cmd = [
             TESS_CMD, in_path, "stdout",
             "--psm", "6",
@@ -212,64 +212,64 @@ def _tesseract_digits(binimg):
             creationflags=_NO_WINDOW,
             cwd=td,  # 作業ディレクトリをASCIIパスにする
         )
-        out = proc.stdout.decode("utf-8", errors="ignore").strip()
-        if not out and proc.stderr and not _tess_err_logged:
+        out = proc.stdout.decode("utf-8", errors="ignore")
+        if not out.strip() and proc.stderr and not _tess_err_logged:
             _tess_err_logged = True
             err = proc.stderr.decode("utf-8", errors="replace")
             print(f"\n[tesseract警告/エラー] return={proc.returncode}\n{err}")
         return out
 
 
-def read_hp(img, cy):
-    """
-    指定行のHPをtesseractで読み取る（int または None）。
-    白さベースで二値化し、妥当範囲(0〜100)を外れた誤読は None を返す。
-    """
-    crop = img.crop((HP_X[0], cy - 13, HP_X[1], cy + 14))
-    binimg = _binarize_white(crop, HP_WHITE_TH, scale=8)
-    raw = _tesseract_digits(binimg)
+def _parse_hp(text):
+    """文字列をHPとして解釈する。範囲外・解釈不能は None。"""
     try:
-        hp = int(raw)
-    except ValueError:
+        hp = int(text)
+    except (ValueError, TypeError):
         return None
-    if HP_MIN <= hp <= HP_MAX:
-        return hp
-    return None  # 範囲外は誤読とみなす（例: 719, 978, -110）
+    return hp if HP_MIN <= hp <= HP_MAX else None
 
 
-_logged = set()  # 同じ種類のエラーは1回だけ詳細表示する
+def _hp_image(img, cy):
+    """指定行のHPボックスを白さベースで二値化した画像を返す。"""
+    crop = img.crop((HP_X[0], cy - 13, HP_X[1], cy + 14))
+    return _binarize_white(crop, HP_WHITE_TH, scale=8)
 
 
-def _log_once(kind, exc):
-    """エラーの詳細トレースを種類ごとに最初の1回だけ表示する。"""
-    if kind in _logged:
-        return
-    _logged.add(kind)
-    import traceback
-    print(f"\n[OCRエラー: {kind}] {type(exc).__name__}: {exc}")
-    print(traceback.format_exc())
+def read_hp(img, cy):
+    """指定行のHPを1つ読み取る（int または None）。"""
+    return _parse_hp(_run_tesseract(_hp_image(img, cy)).strip())
 
 
-def read_rows(img):
+# 一括読みで各HPボックスを縦に連結する際の隙間（行が混ざらないように）
+_HP_STACK_GAP = 40
+
+
+def read_hps(img, slots):
     """
-    8行すべてを読み取り、[(name_raw, hp), ...] を返す。
-    img は 1920x1080 のPIL.Image（RGB）。
-    名前・HPは個別に例外処理し、片方が失敗してももう片方は読む。
+    複数スロットのHPを1回のtesseract呼び出しでまとめて読む（高速）。
+
+    各HPボックスを縦に隙間を空けて1枚に連結し、tesseractに複数行として
+    読ませる。返り値は {slot: hp(or None)}。
+    出力行数がスロット数と合わない場合は個別読みにフォールバックする。
     """
-    rows = []
-    for cy in ROW_CENTERS:
-        try:
-            name = read_name(img, cy)
-        except Exception as e:
-            name = ""
-            _log_once("name(EasyOCR)", e)
-        try:
-            hp = read_hp(img, cy)
-        except Exception as e:
-            hp = None
-            _log_once("hp(tesseract)", e)
-        rows.append((name, hp))
-    return rows
+    if not slots:
+        return {}
+
+    images = [_hp_image(img, ROW_CENTERS[s]) for s in slots]
+    width = max(im.width for im in images)
+    height = sum(im.height for im in images) + _HP_STACK_GAP * (len(images) - 1)
+    canvas = Image.new("L", (width, height), 255)  # 白背景
+    y = 0
+    for im in images:
+        canvas.paste(im, (0, y))
+        y += im.height + _HP_STACK_GAP
+
+    lines = [ln for ln in _run_tesseract(canvas).splitlines() if ln.strip()]
+    if len(lines) == len(slots):
+        return {s: _parse_hp(lines[i]) for i, s in enumerate(slots)}
+
+    # 行数がずれたら安全側で個別に読み直す
+    return {s: read_hp(img, ROW_CENTERS[s]) for s in slots}
 
 
 def fuzzy_match(ocr_name, candidates):
