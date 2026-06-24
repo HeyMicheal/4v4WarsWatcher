@@ -149,7 +149,32 @@ class PlayerTracker:
             "initialized": self.initialized,
             "teamA": self._team_stat(self.team_a),
             "teamB": self._team_stat(self.team_b),
+            "markers": self._markers(assign),
         }
+
+    def _markers(self, assign):
+        """
+        割り当てた各行に、そのプレイヤーのチーム色マーカー情報を付ける。
+        オーバーレイがこのY位置(画面座標)に色マークを重ねる。
+        """
+        member_team = {}
+        for m in self.team_a["members"]:
+            member_team[m] = ("a", self.team_a["color"])
+        for m in self.team_b["members"]:
+            member_team[m] = ("b", self.team_b["color"])
+
+        markers = []
+        for slot, member in assign.items():
+            info = member_team.get(member)
+            if not info:
+                continue
+            side, color = info
+            markers.append({
+                "y": ocr_engine.ROW_CENTERS[slot],  # 画面上のY中心(1920x1080)
+                "side": side,
+                "color": color,
+            })
+        return markers
 
     def _init_templates(self, img, masks, non_empty):
         """EasyOCRで名前を読み、未取得プレイヤーのテンプレートを保存する。"""

@@ -41,6 +41,24 @@ function updateFromAllPlayers(raw) {
 function render() {
   renderTeam('a', workerStats?.teamA);
   renderTeam('b', workerStats?.teamB);
+  renderMarkers(workerStats?.markers);
+}
+
+// TFTプレイヤーリストの各行に、チーム色マーカーを重ねる
+const MARKER_X = 1672;  // 名前バンドの左側（1920x1080固定）
+
+function renderMarkers(markers) {
+  const container = document.getElementById('markers');
+  container.innerHTML = '';
+  if (!Array.isArray(markers)) return;
+  markers.forEach((m) => {
+    const dot = document.createElement('div');
+    dot.className = 'team-marker';
+    dot.style.left = `${MARKER_X}px`;
+    dot.style.top = `${m.y}px`;
+    dot.style.backgroundColor = m.color || '#fff';
+    container.appendChild(dot);
+  });
 }
 
 function renderTeam(side, team) {
