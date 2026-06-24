@@ -22,6 +22,7 @@ from PIL import Image
 from windows_capture import WindowsCapture, Frame, InternalCaptureControl
 
 import ocr_engine
+from stats_server import start_stats_server
 
 # list_windows.py で確認した正確なタイトルに合わせる
 WINDOW_NAME = "League of Legends (TM) Client"
@@ -219,8 +220,14 @@ def main():
     # 初期化中（EasyOCRで重い）と高速モードで間隔を分ける
     init_interval = config.get("interval_seconds", 3)
     fast_interval = config.get("fast_interval_seconds", 0.5)
+    http_port = config.get("http_port", 17653)
     print(f"設定読み込み完了。初期化中{init_interval}秒 / 高速モード{fast_interval}秒間隔。")
     print(f"ウィンドウ: '{WINDOW_NAME}'")
+
+    # 最新の集計をHTTPで配信（Overwolfがポーリングする）
+    latest = {"stats": {"initialized": False}}
+    start_stats_server(http_port, lambda: latest["stats"])
+    print(f"HTTP配信: http://127.0.0.1:{http_port}/stats")
 
     capture = WindowsCapture(
         cursor_capture=None,
@@ -274,6 +281,8 @@ def main():
                 f.write(f"\n--- {datetime.now().isoformat()} ---\n{tb}\n")
             return
 
+        # HTTP配信用に最新の集計を更新し、ファイルにも残す
+        latest["stats"] = stats
         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
             json.dump(stats, f, ensure_ascii=False, indent=2)
 

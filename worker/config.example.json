@@ -10,5 +10,6 @@
   },
   "match_threshold": 0.45,
   "interval_seconds": 3,
-  "fast_interval_seconds": 0.5
+  "fast_interval_seconds": 0.5,
+  "http_port": 17653
 }
