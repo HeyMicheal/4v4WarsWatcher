@@ -123,6 +123,7 @@ def frame_to_image(frame: Frame) -> Image.Image:
 
 def main():
     setup_logging()
+    ocr_engine.setup_tessdata()  # tesseractとtessdataを解決（ログに記録される）
     config = load_config()
     interval = config.get("interval_seconds", 3)
     print(f"設定読み込み完了。{interval}秒間隔でOCRします。")
