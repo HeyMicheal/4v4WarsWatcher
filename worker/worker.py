@@ -14,6 +14,7 @@ TFTウィンドウをWGCで継続キャプチャし、一定間隔で：
 
 import json
 import os
+import sys
 import time
 from datetime import datetime
 
@@ -28,11 +29,37 @@ WINDOW_NAME = "League of Legends (TM) Client"
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
 OUTPUT_PATH = os.path.join(HERE, "output.json")
+LOG_PATH = os.path.join(HERE, "worker.log")
 
 EXPECTED_SIZE = (1920, 1080)
 
 # set DEBUG=1 で、フレーム保存と生OCR結果の表示を有効化
 DEBUG = os.environ.get("DEBUG") == "1"
+
+
+class _Tee:
+    """print出力をコンソールとログファイルの両方へ流す。"""
+
+    def __init__(self, stream, logfile):
+        self.stream = stream
+        self.logfile = logfile
+
+    def write(self, data):
+        self.stream.write(data)
+        self.logfile.write(data)
+        self.logfile.flush()
+
+    def flush(self):
+        self.stream.flush()
+        self.logfile.flush()
+
+
+def setup_logging():
+    """標準出力・標準エラーをworker.logにも記録する（毎回上書き）。"""
+    logfile = open(LOG_PATH, "w", encoding="utf-8")
+    sys.stdout = _Tee(sys.stdout, logfile)
+    sys.stderr = _Tee(sys.stderr, logfile)
+    print(f"ログ出力先: {LOG_PATH}")
 
 
 def load_config():
@@ -95,6 +122,7 @@ def frame_to_image(frame: Frame) -> Image.Image:
 
 
 def main():
+    setup_logging()
     config = load_config()
     interval = config.get("interval_seconds", 3)
     print(f"設定読み込み完了。{interval}秒間隔でOCRします。")
