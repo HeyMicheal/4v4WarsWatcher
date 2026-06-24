@@ -105,10 +105,12 @@ async function launchWorker() {
   const python = cfg.pythonCmd || 'pythonw';
   const dir = cfg.workerDir.replace(/[\\/]+$/, '');
   const script = dir + '\\worker.py';
+  const tesseract = cfg.tesseractCmd || '';
   // Overwolfのブリッジは非ASCII(日本語パス)でエラーになるためBase64で渡す
-  launcher.Launch(b64utf8(python), b64utf8('"' + script + '"'), b64utf8(dir), (r) => {
-    console.log('[4v4Wars] worker launch:', JSON.stringify(r));
-  });
+  launcher.Launch(
+    b64utf8(python), b64utf8('"' + script + '"'), b64utf8(dir), b64utf8(tesseract),
+    (r) => { console.log('[4v4Wars] worker launch:', JSON.stringify(r)); }
+  );
 }
 
 // 文字列をUTF-8 Base64にエンコードする
@@ -116,9 +118,28 @@ function b64utf8(s) {
   return btoa(unescape(encodeURIComponent(s)));
 }
 
-async function killWorker() {
-  const launcher = await getExtraObject('worker-launcher');
-  if (launcher) launcher.Kill(() => {});
+function killWorker() {
+  return new Promise(async (resolve) => {
+    const launcher = await getExtraObject('worker-launcher');
+    if (!launcher) return resolve();
+    launcher.Kill(() => resolve());
+  });
+}
+
+// ── アプリ全終了（ホーム画面の×から呼ばれる） ──
+const QUIT_KEY = '4v4wars_quit';
+
+window.addEventListener('storage', (event) => {
+  if (event.key === QUIT_KEY) quitApp();
+});
+
+async function quitApp() {
+  await killWorker();  // ワーカーを止めてから
+  ['in_game', 'home', 'background'].forEach((name) => {
+    overwolf.windows.obtainDeclaredWindow(name, (r) => {
+      if (r.status === 'success') overwolf.windows.close(r.window.id, () => {});
+    });
+  });
 }
 
 openApp();

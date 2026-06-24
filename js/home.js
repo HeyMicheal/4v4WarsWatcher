@@ -24,6 +24,7 @@ function saveWorkerSettings() {
   const data = {
     workerDir: document.getElementById('worker-dir').value.trim(),
     pythonCmd: document.getElementById('worker-python').value.trim() || 'pythonw',
+    tesseractCmd: document.getElementById('worker-tesseract').value.trim(),
   };
   localStorage.setItem(WORKER_SETTINGS_KEY, JSON.stringify(data));
 }
@@ -35,6 +36,7 @@ function loadWorkerSettings() {
     const data = JSON.parse(raw);
     document.getElementById('worker-dir').value = data.workerDir || '';
     document.getElementById('worker-python').value = data.pythonCmd || '';
+    document.getElementById('worker-tesseract').value = data.tesseractCmd || '';
   } catch (e) {
     // 壊れたデータは無視
   }
@@ -184,7 +186,8 @@ function minimizeWindow() {
 }
 
 function closeWindow() {
-  overwolf.windows.close(currentWindowId, () => {});
+  // background に全終了（ワーカー停止＋全ウィンドウクローズ）を依頼する
+  localStorage.setItem('4v4wars_quit', String(Date.now()));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -194,6 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ワーカー起動設定の自動保存
   document.getElementById('worker-dir').addEventListener('input', saveWorkerSettings);
   document.getElementById('worker-python').addEventListener('input', saveWorkerSettings);
+  document.getElementById('worker-tesseract').addEventListener('input', saveWorkerSettings);
 
   // タイトルバードラッグ
   document.getElementById('title-bar-drag').addEventListener('mousedown', () => {

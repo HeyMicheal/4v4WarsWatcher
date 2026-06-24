@@ -81,9 +81,10 @@ namespace FourV4Worker
 
         /// <summary>
         /// ワーカーを起動する（既に起動中なら何もしない）。各引数は Base64(UTF-8)。
+        /// tesseractCmdB64 が指定されていれば、子プロセスに環境変数 TESSERACT_CMD として渡す。
         /// </summary>
         public void Launch(string fileNameB64, string argumentsB64, string workingDirB64,
-                           Action<object> callback)
+                           string tesseractCmdB64, Action<object> callback)
         {
             try
             {
@@ -101,6 +102,10 @@ namespace FourV4Worker
                     UseShellExecute = false,
                     CreateNoWindow = true,
                 };
+                string tess = DecodeB64(tesseractCmdB64);
+                if (!string.IsNullOrEmpty(tess))
+                    psi.EnvironmentVariables["TESSERACT_CMD"] = tess;
+
                 _process = Process.Start(psi);
                 callback("started");
             }
