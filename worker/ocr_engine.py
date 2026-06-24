@@ -20,6 +20,13 @@ import pytesseract
 _tess_cmd = os.environ.get("TESSERACT_CMD")
 if _tess_cmd:
     pytesseract.pytesseract.tesseract_cmd = _tess_cmd
+    # TESSDATA_PREFIX 未設定なら、tesseract.exe と同じフォルダの tessdata を自動指定。
+    # （これが無いと eng.traineddata が見つからずエラーになる）
+    if not os.environ.get("TESSDATA_PREFIX"):
+        _tess_dir = os.path.dirname(_tess_cmd)
+        _tessdata = os.path.join(_tess_dir, "tessdata")
+        if os.path.isdir(_tessdata):
+            os.environ["TESSDATA_PREFIX"] = _tessdata
 
 # 8行の中心Y座標（1920x1080固定）
 ROW_CENTERS = [216, 288, 360, 432, 504, 576, 648, 720]
