@@ -133,12 +133,23 @@ class PlayerTracker:
     def _init_templates(self, img, masks, non_empty):
         """EasyOCRで名前を読み、未取得プレイヤーのテンプレートを保存する。"""
         self.init_frames += 1
+        claimed = set()  # OCRでいずれかのメンバーに照合できた行
         for slot in non_empty:
             raw = ocr_engine.read_name(img, ocr_engine.ROW_CENTERS[slot])
             cand, score = ocr_engine.fuzzy_match(raw, self.all_members)
-            if score >= self.init_score and cand and cand not in self.templates:
-                self.templates[cand] = masks[slot]
-                print(f"  テンプレート登録: {cand}（OCR:[{raw}] 類似{score:.2f}）")
+            if score >= self.init_score and cand:
+                claimed.add(slot)
+                if cand not in self.templates:
+                    self.templates[cand] = masks[slot]
+                    print(f"  テンプレート登録: {cand}（OCR:[{raw}] 類似{score:.2f}）")
+
+        # 消去法: 未登録メンバーと、どれにも照合しなかった行がそれぞれ1つなら確定
+        # （OCRが苦手な名前＝例: 短い英字 でも、他が揃えば埋められる）
+        missing = [m for m in self.all_members if m not in self.templates]
+        free = [s for s in non_empty if s not in claimed]
+        if len(missing) == 1 and len(free) == 1:
+            self.templates[missing[0]] = masks[free[0]]
+            print(f"  テンプレート登録(消去法): {missing[0]}")
 
         if len(self.templates) >= len(self.all_members):
             self.initialized = True

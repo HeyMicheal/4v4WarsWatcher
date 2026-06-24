@@ -98,7 +98,8 @@ def setup_tessdata():
 ROW_CENTERS = [216, 288, 360, 432, 504, 576, 648, 720]
 
 # 各行内のクロップ範囲（X）
-NAME_X = (1716, 1810)   # 名前（左ポートレートと右HPボックスを除外）
+# 名前バンドは名前の長さに応じて左へ伸縮する。長い名前も拾えるよう左端を広めに取る。
+NAME_X = (1700, 1810)   # 名前（右はHPボックスの手前まで）
 HP_X = (1812, 1856)     # HPボックス（枠線を避けつつマイナス・3桁を含む）
 
 # 二値化のしきい値（明るい文字を黒に反転）
@@ -146,19 +147,26 @@ def _binarize_white(crop, th, scale):
 
 # 名前テンプレート照合用の設定
 NAME_MASK_SIZE = (160, 40)   # マスクを正規化する固定サイズ
-NAME_WHITE_TH = 130          # 名前の白文字抽出しきい値
-NAME_EMPTY_RATIO = 0.02      # 白画素率がこれ未満なら「名前なし（空行）」とみなす
+NAME_WHITE_TH = 180          # 白文字の最低明るさ（薄い空などの背景を除外するため高め）
+NAME_SAT_TH = 45             # 白文字の最大彩度(max-min)。色のある背景(青空・盤面)を除外
+NAME_EMPTY_RATIO = 0.005     # 白画素率がこれ未満なら「名前なし（空行）」とみなす
 
 
 def name_mask(img, cy):
     """
     指定行の名前領域を白文字マスク(0/1のfloat32配列)にして固定サイズに正規化する。
     並び順が変わっても同じプレイヤーなら同じ画像になるため、テンプレート照合に使う。
+
+    名前バンドは長さに応じて伸縮し、短い名前の左側にはゲーム背景が見える。
+    白文字は「明るく(min>NAME_WHITE_TH)かつ低彩度((max-min)<NAME_SAT_TH)」で抽出し、
+    青空や盤面のような色付き・薄い背景を除外する。
     """
     crop = img.crop((NAME_X[0], cy - 15, NAME_X[1], cy + 16))
-    arr = np.array(crop.resize(NAME_MASK_SIZE, Image.LANCZOS))
-    mn = arr.min(axis=2)  # 白文字はmin(R,G,B)が高い
-    return (mn > NAME_WHITE_TH).astype(np.float32)
+    arr = np.array(crop.resize(NAME_MASK_SIZE, Image.LANCZOS)).astype(int)
+    mn = arr.min(axis=2)
+    mx = arr.max(axis=2)
+    white = (mn > NAME_WHITE_TH) & ((mx - mn) < NAME_SAT_TH)
+    return white.astype(np.float32)
 
 
 def mask_is_empty(mask):
