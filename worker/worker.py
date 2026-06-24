@@ -166,6 +166,14 @@ class PlayerTracker:
             assign[slot] = member
             used_slots.add(slot)
             used_members.add(member)
+
+        # 残った行とプレイヤーがそれぞれ1つだけなら、消去法で確定させる
+        # （金枠などで1人だけ照合が閾値を割っても、候補が1つなので埋められる）
+        rest_slots = [s for s in non_empty if s not in used_slots]
+        rest_members = [m for m in self.templates if m not in used_members]
+        if len(rest_slots) == 1 and len(rest_members) == 1:
+            assign[rest_slots[0]] = rest_members[0]
+
         return assign
 
     def _team_stat(self, team):
