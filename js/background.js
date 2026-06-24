@@ -79,12 +79,19 @@ function closeInGameWindow() {
 // ── OCRワーカーの起動/停止（C#プラグイン経由） ──
 const WORKER_SETTINGS_KEY = '4v4wars_worker';
 
-function getExtraObject(name) {
-  return new Promise((resolve) => {
-    overwolf.extensions.current.getExtraObject(name, (result) => {
-      resolve(result && result.status === 'success' ? result.object : null);
+// プラグインのインスタンスをキャッシュして使い回す。
+// 起動と停止で別インスタンスになると、Killが効かず（別インスタンスは
+// 起動したプロセスを持たない）ワーカーが残るため、必ず同じものを使う。
+let _launcherPromise = null;
+function getLauncher() {
+  if (!_launcherPromise) {
+    _launcherPromise = new Promise((resolve) => {
+      overwolf.extensions.current.getExtraObject('worker-launcher', (result) => {
+        resolve(result && result.status === 'success' ? result.object : null);
+      });
     });
-  });
+  }
+  return _launcherPromise;
 }
 
 async function launchWorker() {
@@ -97,7 +104,7 @@ async function launchWorker() {
   try { cfg = JSON.parse(raw); } catch (e) { return; }
   if (!cfg.workerDir) return;
 
-  const launcher = await getExtraObject('worker-launcher');
+  const launcher = await getLauncher();
   if (!launcher) {
     console.error('[4v4Wars] worker-launcher プラグインの取得に失敗');
     return;
@@ -120,7 +127,7 @@ function b64utf8(s) {
 
 function killWorker() {
   return new Promise(async (resolve) => {
-    const launcher = await getExtraObject('worker-launcher');
+    const launcher = await getLauncher();
     if (!launcher) return resolve();
     launcher.Kill(() => resolve());
   });
