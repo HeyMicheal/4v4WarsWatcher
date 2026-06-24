@@ -1,0 +1,13 @@
+{
+  "_comment": "このファイルを config.json にコピーして、登録プレイヤー名を編集してください。members はRiotIDのゲーム名部分（#タグより前）です。",
+  "teamA": {
+    "name": "Team A",
+    "members": ["poyo01", "guitar hero", "nihuramu", "aoi6464"]
+  },
+  "teamB": {
+    "name": "Team B",
+    "members": ["ちんもくはる", "12番中山", "rikutattun", "カタリスト加藤"]
+  },
+  "match_threshold": 0.45,
+  "interval_seconds": 3
+}

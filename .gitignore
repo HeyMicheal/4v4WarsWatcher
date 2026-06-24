@@ -4,5 +4,7 @@ node_modules/
 
 # OCRワーカー
 worker/capture.png
+worker/config.json
+worker/output.json
 worker/__pycache__/
 *.pyc
