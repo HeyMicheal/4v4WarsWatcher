@@ -2,6 +2,7 @@
 const TFT_GAME_IDS = [5426, 21570];
 
 let inGameWindow = null;
+let gameRunning = false;  // TFTが実行中か
 
 overwolf.extensions.onAppLaunchTriggered.addListener(openApp);
 
@@ -9,6 +10,7 @@ async function openApp() {
   openHomeWindow();
   const gameInfo = await getRunningGameInfo();
   if (gameInfo && isTFT(gameInfo.classId)) {
+    gameRunning = true;
     openInGameWindow();
   }
 }
@@ -16,9 +18,21 @@ async function openApp() {
 overwolf.games.onGameInfoUpdated.addListener((event) => {
   if (!event.runningChanged) return;
   if (event.gameInfo && isTFT(event.gameInfo.classId)) {
+    gameRunning = true;
     openInGameWindow();
   } else {
+    gameRunning = false;
     closeInGameWindow();
+  }
+});
+
+// ホーム画面でワーカー設定が保存されたら、ゲーム実行中ならワーカーを起動する
+// （オーバーレイ起動後にパスを設定した場合に対応）。入力が落ち着くまで待つ。
+let workerSettingsTimer = null;
+window.addEventListener('storage', (event) => {
+  if (event.key === WORKER_SETTINGS_KEY && gameRunning) {
+    clearTimeout(workerSettingsTimer);
+    workerSettingsTimer = setTimeout(launchWorker, 1500);
   }
 });
 
