@@ -73,32 +73,76 @@ def load_config():
         return json.load(f)
 
 
-def build_stats(rows, config):
-    """
-    OCR結果(rows)を登録チームと照合し、チーム集計を返す。
-    rows: [(name_raw, hp), ...]（8行）
-    """
-    threshold = config.get("match_threshold", 0.45)
-    all_members = config["teamA"]["members"] + config["teamB"]["members"]
+# 連続でこの回数フレームに現れなければ「脱落」とみなす
+# （TFTでは脱落プレイヤーはリストから消える。OCRの一時的な照合失敗で
+#   誤って脱落扱いしないよう、数フレームの猶予を持たせる）
+DEAD_AFTER_MISSES = 3
 
-    # 各行を最も近い登録名に割り当て: {登録名: hp}
-    matched = {}
-    for name_raw, hp in rows:
-        cand, score = ocr_engine.fuzzy_match(name_raw, all_members)
-        if score >= threshold and cand is not None:
-            matched[cand] = hp
 
-    def team_stat(team):
+class PlayerTracker:
+    """
+    フレームをまたいでプレイヤーの状態を保持する。
+
+    - HPは有効値が読めたときだけ更新（直前の有効値を保持＝一時的な誤読に強い）
+    - 名前照合が一時的に失敗しても、連続DEAD_AFTER_MISSES回まで生存とみなす
+    """
+
+    def __init__(self, config):
+        self.config = config
+        self.threshold = config.get("match_threshold", 0.45)
+        self.all_members = (
+            config["teamA"]["members"] + config["teamB"]["members"]
+        )
+        # member -> {hp, misses, seen}
+        self.state = {
+            m: {"hp": None, "misses": DEAD_AFTER_MISSES, "seen": False}
+            for m in self.all_members
+        }
+
+    def update(self, rows):
+        """OCR結果で状態を更新し、チーム集計を返す。"""
+        # 各行を最も近い登録名へ割り当て（HPが読めた行を優先）
+        matched = {}
+        for name_raw, hp in rows:
+            cand, score = ocr_engine.fuzzy_match(name_raw, self.all_members)
+            if score < self.threshold or cand is None:
+                continue
+            if cand not in matched or (matched[cand] is None and hp is not None):
+                matched[cand] = hp
+
+        for m, st in self.state.items():
+            if m in matched:
+                st["misses"] = 0
+                st["seen"] = True
+                if matched[m] is not None:
+                    st["hp"] = matched[m]  # 有効HPのみ更新
+            else:
+                st["misses"] += 1
+
+        return {
+            "updated": datetime.now().isoformat(timespec="seconds"),
+            "teamA": self._team_stat(self.config["teamA"]),
+            "teamB": self._team_stat(self.config["teamB"]),
+        }
+
+    def _is_alive(self, st):
+        # 一度も観測できていなければ不明（生存に数えない）
+        if not st["seen"]:
+            return False
+        return st["misses"] < DEAD_AFTER_MISSES
+
+    def _team_stat(self, team):
         members = []
         total_hp = 0
         alive = 0
         for m in team["members"]:
-            hp = matched.get(m)
-            is_alive = hp is not None and hp > 0
-            if hp is not None and hp > 0:
-                total_hp += hp
+            st = self.state[m]
+            is_alive = self._is_alive(st)
+            hp = st["hp"]
             if is_alive:
                 alive += 1
+                if hp is not None:
+                    total_hp += hp
             members.append({"name": m, "hp": hp, "alive": is_alive})
         return {
             "name": team["name"],
@@ -106,12 +150,6 @@ def build_stats(rows, config):
             "alive": alive,
             "members": members,
         }
-
-    return {
-        "updated": datetime.now().isoformat(timespec="seconds"),
-        "teamA": team_stat(config["teamA"]),
-        "teamB": team_stat(config["teamB"]),
-    }
 
 
 def frame_to_image(frame: Frame) -> Image.Image:
@@ -137,6 +175,7 @@ def main():
     )
 
     state = {"last": 0.0, "warned_size": False}
+    tracker = PlayerTracker(config)
 
     @capture.event
     def on_frame_arrived(frame: Frame, capture_control: InternalCaptureControl):
@@ -166,7 +205,7 @@ def main():
                 print("--- 生OCR結果（各行 名前 / HP）---")
                 for i, (nm, hp) in enumerate(rows):
                     print(f"  row{i}: 名前=[{nm}]  HP=[{hp}]")
-            stats = build_stats(rows, config)
+            stats = tracker.update(rows)
             dt = time.time() - t0
         except Exception:
             import traceback

@@ -103,7 +103,10 @@ HP_X = (1812, 1856)     # HPボックス（枠線を避けつつマイナス・3
 
 # 二値化のしきい値（明るい文字を黒に反転）
 NAME_TH = 170
-HP_TH = 150
+HP_WHITE_TH = 130   # HP数字: min(R,G,B)がこれ以上を白文字とみなす（金枠を除外）
+
+# HPの妥当範囲。これを外れたOCR結果は誤読として無効化する
+HP_MIN, HP_MAX = 0, 100
 
 _reader = None  # EasyOCRリーダー（初回ロードが重いので使い回す）
 
@@ -123,6 +126,21 @@ def _binarize(crop, th, scale):
         (crop.width * scale, crop.height * scale), Image.LANCZOS
     )
     return g.point(lambda p: 0 if p > th else 255)
+
+
+def _binarize_white(crop, th, scale):
+    """
+    白い文字だけを抽出して二値化する（HP数字用）。
+
+    各画素の min(R,G,B) で判定する。白文字はR=G=Bが高いのでminも高いが、
+    金色のハイライト枠は黄色で青成分が低いためminが低く、除外できる。
+    文字を黒、背景を白にしてtesseractに渡す。
+    """
+    big = crop.resize((crop.width * scale, crop.height * scale), Image.LANCZOS)
+    arr = np.array(big)
+    mn = arr.min(axis=2)  # 各画素のRGB最小値
+    mask = (mn > th).astype("uint8") * 255  # 白文字=255
+    return Image.fromarray(255 - mask)       # 反転して文字=黒
 
 
 def read_name(img, cy):
@@ -172,14 +190,20 @@ def _tesseract_digits(binimg):
 
 
 def read_hp(img, cy):
-    """指定行のHPをtesseractで読み取る（int または None）。"""
+    """
+    指定行のHPをtesseractで読み取る（int または None）。
+    白さベースで二値化し、妥当範囲(0〜100)を外れた誤読は None を返す。
+    """
     crop = img.crop((HP_X[0], cy - 13, HP_X[1], cy + 14))
-    binimg = _binarize(crop, HP_TH, scale=8)
+    binimg = _binarize_white(crop, HP_WHITE_TH, scale=8)
     raw = _tesseract_digits(binimg)
     try:
-        return int(raw)
+        hp = int(raw)
     except ValueError:
         return None
+    if HP_MIN <= hp <= HP_MAX:
+        return hp
+    return None  # 範囲外は誤読とみなす（例: 719, 978, -110）
 
 
 _logged = set()  # 同じ種類のエラーは1回だけ詳細表示する
