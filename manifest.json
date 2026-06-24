@@ -20,6 +20,12 @@
       "type": "dedicated",
       "game_ids": [5426, 21570]
     },
+    "extra-objects": {
+      "worker-launcher": {
+        "file": "plugins/worker-launcher.dll",
+        "class": "FourV4Worker.Launcher"
+      }
+    },
     "windows": {
       "background": {
         "file": "background.html",
@@ -41,7 +47,7 @@
         "native_window": true,
         "size": {
           "width": 780,
-          "height": 600
+          "height": 700
         }
       },
       "in_game": {

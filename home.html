@@ -70,6 +70,19 @@
       </div>
     </main>
 
+    <section class="worker-settings">
+      <div class="worker-row">
+        <label for="worker-dir">ワーカーフォルダ</label>
+        <input type="text" id="worker-dir" spellcheck="false"
+               placeholder="例: D:\projects\4v4WarsWatcher\worker" />
+      </div>
+      <div class="worker-row">
+        <label for="worker-python">Python（任意）</label>
+        <input type="text" id="worker-python" spellcheck="false" placeholder="pythonw" />
+      </div>
+      <p class="worker-hint">オーバーレイ起動時にこのフォルダの worker.py を自動実行します。</p>
+    </section>
+
     <footer>
       <span id="status-msg"></span>
     </footer>

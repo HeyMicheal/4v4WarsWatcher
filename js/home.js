@@ -17,6 +17,29 @@ function setVal(id, value) {
 // Pythonワーカーの設定更新先（worker/config.json の http_port と合わせる）
 const WORKER_CONFIG_URL = 'http://127.0.0.1:17653/config';
 
+// ワーカー起動設定（フォルダ・Pythonコマンド）の保存キー
+const WORKER_SETTINGS_KEY = '4v4wars_worker';
+
+function saveWorkerSettings() {
+  const data = {
+    workerDir: document.getElementById('worker-dir').value.trim(),
+    pythonCmd: document.getElementById('worker-python').value.trim() || 'pythonw',
+  };
+  localStorage.setItem(WORKER_SETTINGS_KEY, JSON.stringify(data));
+}
+
+function loadWorkerSettings() {
+  const raw = localStorage.getItem(WORKER_SETTINGS_KEY);
+  if (!raw) return;
+  try {
+    const data = JSON.parse(raw);
+    document.getElementById('worker-dir').value = data.workerDir || '';
+    document.getElementById('worker-python').value = data.pythonCmd || '';
+  } catch (e) {
+    // 壊れたデータは無視
+  }
+}
+
 function persist() {
   const data = {
     teamA: { name: getVal('team-a-name') || 'Team A', members: state.a, color: getColor('a') },
@@ -166,6 +189,11 @@ function closeWindow() {
 
 document.addEventListener('DOMContentLoaded', () => {
   load();
+  loadWorkerSettings();
+
+  // ワーカー起動設定の自動保存
+  document.getElementById('worker-dir').addEventListener('input', saveWorkerSettings);
+  document.getElementById('worker-python').addEventListener('input', saveWorkerSettings);
 
   // タイトルバードラッグ
   document.getElementById('title-bar-drag').addEventListener('mousedown', () => {

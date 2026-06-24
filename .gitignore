@@ -11,3 +11,8 @@ worker/__pycache__/
 debug_frame.png
 
 worker/worker.log
+
+# C#プラグインのビルド成果物
+plugin/bin/
+plugin/obj/
+*.dll
