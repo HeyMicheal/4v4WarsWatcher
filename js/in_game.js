@@ -1,62 +1,37 @@
-const STORAGE_KEY = '4v4wars_teams';
-const GEP_FEATURES = ['roster', 'live_client_data', 'match_info'];
+// オーバーレイ表示ロジック
+//   HP・チーム名・メンバー → Pythonワーカーの /stats (HTTP) から取得
+//   生存/脱落          → Overwolf GEP (live_client_data.all_players の isDead)
+//   ステージ            → GEP (match_info.round_type)
 
-let teamConfig = null;
+// ワーカーのHTTP配信先（worker/config.json の http_port と合わせる）
+const WORKER_URL = 'http://127.0.0.1:17653/stats';
+const POLL_MS = 500;
 
-// プレイヤーキャッシュ: { "名前(小文字)": { isDead: boolean } }
-let playerCache = {};
+const GEP_FEATURES = ['live_client_data', 'match_info'];
 
-// ── チーム設定 ──
-function loadTeamConfig() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return;
+let workerStats = null;     // ワーカーから取得した最新の集計
+let deadByName = {};        // プレイヤー名(小文字) -> 脱落しているか
+let stage = '--';
+
+// ── ワーカーからHPを取得 ──
+async function pollWorker() {
   try {
-    teamConfig = JSON.parse(raw);
-    applyTeamNames();
-    render();
+    const res = await fetch(WORKER_URL, { cache: 'no-store' });
+    workerStats = await res.json();
   } catch (e) {
-    console.error('[4v4Wars] チーム設定の読み込みに失敗:', e);
+    workerStats = null;  // ワーカー未起動など
   }
+  render();
 }
 
-function applyTeamNames() {
-  if (!teamConfig) return;
-  document.getElementById('team-a-name').textContent = teamConfig.teamA?.name || 'Team A';
-  document.getElementById('team-b-name').textContent = teamConfig.teamB?.name || 'Team B';
-}
-
-// ── 表示更新 ──
-function calcAlive(members) {
-  return members.filter((m) => {
-    const p = playerCache[m.name.toLowerCase()];
-    return p && !p.isDead;
-  }).length;
-}
-
-function render() {
-  if (!teamConfig) return;
-
-  const membersA = teamConfig.teamA?.members || [];
-  const membersB = teamConfig.teamB?.members || [];
-  const aliveA = calcAlive(membersA);
-  const aliveB = calcAlive(membersB);
-
-  document.getElementById('team-a-alive').textContent = `${aliveA}/${membersA.length}`;
-  document.getElementById('team-b-alive').textContent = `${aliveB}/${membersB.length}`;
-
-  document.getElementById('team-a-panel').classList.toggle('eliminated', membersA.length > 0 && aliveA === 0);
-  document.getElementById('team-b-panel').classList.toggle('eliminated', membersB.length > 0 && aliveB === 0);
-}
-
-// ── live_client_data.all_players から isDead を更新 ──
+// ── GEP: all_players から脱落状態を更新 ──
 function updateFromAllPlayers(raw) {
   try {
     const players = typeof raw === 'string' ? JSON.parse(raw) : raw;
     players.forEach((p) => {
       const name = (p.riotIdGameName || p.summonerName || '').split('#')[0].toLowerCase();
       if (!name) return;
-      if (!playerCache[name]) playerCache[name] = { isDead: false };
-      playerCache[name].isDead = p.isDead === true;
+      deadByName[name] = p.isDead === true;
     });
     render();
   } catch (e) {
@@ -64,15 +39,44 @@ function updateFromAllPlayers(raw) {
   }
 }
 
-// ── match_info.round_type からステージを更新 ──
 function updateStage(raw) {
   try {
     const rt = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    const stage = rt?.stage || '--';
-    document.getElementById('stage-value').textContent = stage;
+    stage = rt?.stage || '--';
   } catch (e) {
-    // ステージ表示失敗は無視
+    // ステージ更新失敗は無視
   }
+}
+
+// ── 表示更新 ──
+function render() {
+  renderTeam('a', workerStats?.teamA);
+  renderTeam('b', workerStats?.teamB);
+  document.getElementById('stage-value').textContent = stage;
+}
+
+function renderTeam(side, team) {
+  const nameEl = document.getElementById(`team-${side}-name`);
+  const hpEl = document.getElementById(`team-${side}-hp`);
+  const aliveEl = document.getElementById(`team-${side}-alive`);
+  const panel = document.getElementById(`team-${side}-panel`);
+
+  if (!team) {
+    // ワーカー未接続時は値を伏せる（チーム名は維持）
+    hpEl.textContent = '--';
+    aliveEl.textContent = '--';
+    panel.classList.remove('eliminated');
+    return;
+  }
+
+  nameEl.textContent = team.name || nameEl.textContent;
+  hpEl.textContent = (team.totalHp ?? '--');
+
+  // 生存数: ワーカーが持つメンバーのうち、GEPで脱落していない人数
+  const members = team.members || [];
+  const alive = members.filter((m) => !deadByName[(m.name || '').toLowerCase()]).length;
+  aliveEl.textContent = `${alive}/${members.length}`;
+  panel.classList.toggle('eliminated', members.length > 0 && alive === 0);
 }
 
 // ── GEP イベント購読 ──
@@ -85,13 +89,10 @@ overwolf.games.events.onInfoUpdates2.addListener((event) => {
   }
 });
 
-// ── getInfo ポーリング（5秒ごとに最新状態を取得） ──
-let pollInterval = null;
-
-function fetchAndApplyInfo() {
+// ── GEP getInfo ポーリング（生存・ステージの取りこぼし対策） ──
+function fetchGepInfo() {
   overwolf.games.events.getInfo((info) => {
     if (!info?.res) return;
-
     if (info.res.live_client_data?.all_players) {
       updateFromAllPlayers(info.res.live_client_data.all_players);
     }
@@ -101,30 +102,18 @@ function fetchAndApplyInfo() {
   });
 }
 
-function startPolling() {
-  fetchAndApplyInfo();
-  if (pollInterval) clearInterval(pollInterval);
-  pollInterval = setInterval(fetchAndApplyInfo, 5000);
-}
-
-// ── GEP フィーチャー登録 ──
 function registerFeatures(retryCount = 0) {
   overwolf.games.events.setRequiredFeatures(GEP_FEATURES, (result) => {
     if (result.status === 'success') {
-      startPolling();
+      fetchGepInfo();
+      setInterval(fetchGepInfo, 3000);
     } else if (retryCount < 5) {
       setTimeout(() => registerFeatures(retryCount + 1), 2000);
     }
   });
 }
 
-// ── home 画面の設定変更を即時反映 ──
-window.addEventListener('storage', (event) => {
-  if (event.key === STORAGE_KEY) {
-    loadTeamConfig();
-  }
-});
-
 // ── 初期化 ──
-loadTeamConfig();
 registerFeatures();
+setInterval(pollWorker, POLL_MS);
+pollWorker();
