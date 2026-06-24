@@ -73,38 +73,100 @@ def load_config():
         return json.load(f)
 
 
+# テンプレート照合で行をプレイヤーに割り当てる最低類似度
+MIN_MATCH_NCC = 0.30
+# 初期化時にEasyOCRの照合を採用する最低スコア（誤テンプレート防止のため高め）
+INIT_MATCH_SCORE = 0.55
+# この回数フレームを試しても全員揃わなければ、揃った分だけで高速モードに移る
+MAX_INIT_FRAMES = 6
+
+
 class PlayerTracker:
     """
-    フレームをまたいで各プレイヤーのHPを保持する。
+    名前画像テンプレート照合で各行が誰かを特定し、HPを保持する。
 
-    生存判定はOverwolf GEP側で行うため、ここはHP読み取りに専念する。
-    HPは有効値が読めたときだけ更新し、直前の有効値を保持する
-    （一時的な誤読・照合失敗があっても直近のHPを維持できる）。
+    - 初期化フェーズ: EasyOCRで名前を読んで登録名と照合し、各プレイヤーの
+      「名前画像」をテンプレートとして記憶する（全員揃うまで毎フレーム試行）。
+    - 通常フェーズ: 各行の名前画像をテンプレートと照合（OCR不要・高速）。
+      並び替えに対応するため、行とプレイヤーを1対1で割り当てる。
+    生存判定はOverwolf GEPに任せ、ここはHP読み取りに専念する。
     """
 
     def __init__(self, config):
         self.config = config
-        self.threshold = config.get("match_threshold", 0.45)
+        self.init_score = config.get("init_match_score", INIT_MATCH_SCORE)
         self.all_members = (
             config["teamA"]["members"] + config["teamB"]["members"]
         )
-        self.last_hp = {m: None for m in self.all_members}  # member -> HP
+        self.last_hp = {m: None for m in self.all_members}   # member -> HP
+        self.templates = {}        # member -> 名前画像マスク
+        self.initialized = False   # 全員のテンプレートが揃ったか
+        self.init_frames = 0       # 初期化を試したフレーム数
 
-    def update(self, rows):
-        """OCR結果でHPを更新し、チームごとのHP集計を返す。"""
-        # 各行を最も近い登録名へ割り当て、有効HPのみ採用
-        for name_raw, hp in rows:
-            if hp is None:
-                continue
-            cand, score = ocr_engine.fuzzy_match(name_raw, self.all_members)
-            if score >= self.threshold and cand is not None:
-                self.last_hp[cand] = hp
+    def update(self, img):
+        """1フレームを処理し、チームごとのHP集計を返す。"""
+        # 各スロットの名前マスクと中身の有無
+        masks = [ocr_engine.name_mask(img, cy) for cy in ocr_engine.ROW_CENTERS]
+        non_empty = [
+            i for i, m in enumerate(masks) if not ocr_engine.mask_is_empty(m)
+        ]
 
-        return {
+        if not self.initialized:
+            self._init_templates(img, masks, non_empty)
+
+        # 行→プレイヤーの割り当て（テンプレートがある分だけ）
+        assign = self._assign(masks, non_empty)
+
+        # 割り当てた行のHPを読んで更新
+        for slot, member in assign.items():
+            hp = ocr_engine.read_hp(img, ocr_engine.ROW_CENTERS[slot])
+            if hp is not None:
+                self.last_hp[member] = hp
+
+        return assign, {
             "updated": datetime.now().isoformat(timespec="seconds"),
+            "initialized": self.initialized,
             "teamA": self._team_stat(self.config["teamA"]),
             "teamB": self._team_stat(self.config["teamB"]),
         }
+
+    def _init_templates(self, img, masks, non_empty):
+        """EasyOCRで名前を読み、未取得プレイヤーのテンプレートを保存する。"""
+        self.init_frames += 1
+        for slot in non_empty:
+            raw = ocr_engine.read_name(img, ocr_engine.ROW_CENTERS[slot])
+            cand, score = ocr_engine.fuzzy_match(raw, self.all_members)
+            if score >= self.init_score and cand and cand not in self.templates:
+                self.templates[cand] = masks[slot]
+                print(f"  テンプレート登録: {cand}（OCR:[{raw}] 類似{score:.2f}）")
+
+        if len(self.templates) >= len(self.all_members):
+            self.initialized = True
+            print("テンプレート照合の準備完了。以降は高速モードで動作します。")
+        elif self.init_frames >= MAX_INIT_FRAMES:
+            self.initialized = True
+            missing = [m for m in self.all_members if m not in self.templates]
+            print(f"テンプレート照合を開始します（未登録: {missing}）。")
+            print("  ※ 未登録プレイヤーはHP未取得になります。config.jsonの名前を確認してください。")
+
+    def _assign(self, masks, non_empty):
+        """非空行をテンプレートに1対1で貪欲割り当て。{slot: member} を返す。"""
+        pairs = []
+        for slot in non_empty:
+            for member, tmpl in self.templates.items():
+                pairs.append((ocr_engine.ncc(masks[slot], tmpl), slot, member))
+        pairs.sort(reverse=True)
+
+        used_slots, used_members, assign = set(), set(), {}
+        for sim, slot, member in pairs:
+            if sim < MIN_MATCH_NCC:
+                break
+            if slot in used_slots or member in used_members:
+                continue
+            assign[slot] = member
+            used_slots.add(slot)
+            used_members.add(member)
+        return assign
 
     def _team_stat(self, team):
         members = []
@@ -172,12 +234,13 @@ def main():
         # OCR処理は例外で全体を落とさず、詳細をログに残して継続する
         try:
             t0 = time.time()
-            rows = ocr_engine.read_rows(img)
+            assign, stats = tracker.update(img)
             if DEBUG:
-                print("--- 生OCR結果（各行 名前 / HP）---")
-                for i, (nm, hp) in enumerate(rows):
-                    print(f"  row{i}: 名前=[{nm}]  HP=[{hp}]")
-            stats = tracker.update(rows)
+                print("--- 行→プレイヤー割り当て ---")
+                for slot in range(len(ocr_engine.ROW_CENTERS)):
+                    member = assign.get(slot, "（なし）")
+                    hp = tracker.last_hp.get(member) if slot in assign else None
+                    print(f"  slot{slot}: {member}  HP=[{hp}]")
             dt = time.time() - t0
         except Exception:
             import traceback

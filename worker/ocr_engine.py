@@ -144,6 +144,36 @@ def _binarize_white(crop, th, scale):
     return Image.fromarray(255 - mask)       # 反転して文字=黒
 
 
+# 名前テンプレート照合用の設定
+NAME_MASK_SIZE = (160, 40)   # マスクを正規化する固定サイズ
+NAME_WHITE_TH = 130          # 名前の白文字抽出しきい値
+NAME_EMPTY_RATIO = 0.02      # 白画素率がこれ未満なら「名前なし（空行）」とみなす
+
+
+def name_mask(img, cy):
+    """
+    指定行の名前領域を白文字マスク(0/1のfloat32配列)にして固定サイズに正規化する。
+    並び順が変わっても同じプレイヤーなら同じ画像になるため、テンプレート照合に使う。
+    """
+    crop = img.crop((NAME_X[0], cy - 15, NAME_X[1], cy + 16))
+    arr = np.array(crop.resize(NAME_MASK_SIZE, Image.LANCZOS))
+    mn = arr.min(axis=2)  # 白文字はmin(R,G,B)が高い
+    return (mn > NAME_WHITE_TH).astype(np.float32)
+
+
+def mask_is_empty(mask):
+    """マスクの白画素率が低い（名前が無い空行）かどうか。"""
+    return float(mask.mean()) < NAME_EMPTY_RATIO
+
+
+def ncc(a, b):
+    """2つのマスクの正規化相互相関(-1〜1)。1に近いほど同一。"""
+    a = a - a.mean()
+    b = b - b.mean()
+    d = np.sqrt((a * a).sum() * (b * b).sum())
+    return float((a * b).sum() / d) if d > 0 else 0.0
+
+
 def read_name(img, cy):
     """指定行の名前をEasyOCRで読み取る（生の文字列）。"""
     crop = img.crop((NAME_X[0], cy - 15, NAME_X[1], cy + 16))
