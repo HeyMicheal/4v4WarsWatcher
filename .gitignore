@@ -8,3 +8,4 @@ worker/config.json
 worker/output.json
 worker/__pycache__/
 *.pyc
+debug_frame.png

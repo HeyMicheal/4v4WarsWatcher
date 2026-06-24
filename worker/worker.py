@@ -31,6 +31,9 @@ OUTPUT_PATH = os.path.join(HERE, "output.json")
 
 EXPECTED_SIZE = (1920, 1080)
 
+# set DEBUG=1 で、フレーム保存と生OCR結果の表示を有効化
+DEBUG = os.environ.get("DEBUG") == "1"
+
 
 def load_config():
     """config.json を読み込む。なければ説明を出して終了。"""
@@ -119,10 +122,21 @@ def main():
             print(f"警告: 解像度が {img.size} です（{EXPECTED_SIZE}前提）。座標がずれる可能性。")
             state["warned_size"] = True
 
+        # デバッグモード（set DEBUG=1）: 最初のフレームを保存し、生OCR結果を表示
+        if DEBUG and not state.get("saved_frame"):
+            dbg_path = os.path.join(HERE, "debug_frame.png")
+            img.save(dbg_path)
+            print(f"デバッグ: フレームを保存しました → {dbg_path}（解像度 {img.size}）")
+            state["saved_frame"] = True
+
         # OCR処理は例外で全体を落とさず、詳細をログに残して継続する
         try:
             t0 = time.time()
             rows = ocr_engine.read_rows(img)
+            if DEBUG:
+                print("--- 生OCR結果（各行 名前 / HP）---")
+                for i, (nm, hp) in enumerate(rows):
+                    print(f"  row{i}: 名前=[{nm}]  HP=[{hp}]")
             stats = build_stats(rows, config)
             dt = time.time() - t0
         except Exception:
