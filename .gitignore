@@ -1,3 +1,8 @@
 .DS_Store
 *.log
 node_modules/
+
+# OCRワーカー
+worker/capture.png
+worker/__pycache__/
+*.pyc

@@ -1,0 +1,9 @@
+# ステップ1（キャプチャ検証）に必要なパッケージ
+windows-capture
+pygetwindow
+
+# 以降のステップで追加予定:
+# pytesseract      # HP（数字）OCR
+# easyocr          # 名前（日本語）OCR
+# Pillow           # 画像前処理
+# numpy            # 画像配列処理
