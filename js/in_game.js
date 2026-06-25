@@ -57,10 +57,19 @@ function buildNameMap() {
   return map;
 }
 
+// チーム設定の読み込み状況をログに出す（生存数が出ない時の切り分け用）
+function logTeams(when) {
+  console.log(`[4v4Wars] チーム設定(${when}): `
+    + `A=${teams.a.name}[${teams.a.members.join(',')}] `
+    + `B=${teams.b.name}[${teams.b.members.join(',')}]`);
+}
+logTeams('起動時');
+
 // ホーム画面で設定が変わったら追従する（別ウィンドウの storage イベント）
 window.addEventListener('storage', (event) => {
   if (event.key === TEAMS_KEY) {
     teams = loadTeams();
+    logTeams('更新');
     render();
   }
 });

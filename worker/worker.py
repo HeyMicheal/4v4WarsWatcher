@@ -142,6 +142,21 @@ class PlayerTracker:
         self.initialized = False   # 全員のテンプレートが揃ったか
         self.init_frames = 0       # 初期化を試したフレーム数
 
+    def inherit(self, prev):
+        """前のトラッカーから、引き続き存在する名前のテンプレート・HP・位置を引き継ぐ。
+        設定更新（メンバー追加など）のたびに全員分のEasyOCRをやり直さないため。"""
+        if not prev:
+            return
+        for name in self.names:
+            if name in prev.templates:
+                self.templates[name] = prev.templates[name]
+            if prev.last_hp.get(name) is not None:
+                self.last_hp[name] = prev.last_hp[name]
+            if prev.last_y.get(name) is not None:
+                self.last_y[name] = prev.last_y[name]
+        if self.names and len(self.templates) >= len(self.names):
+            self.initialized = True  # 全員のテンプレが揃っていれば即高速モード
+
     def update(self, img):
         """1フレームを処理し、プレイヤーごとの位置・HPを返す。"""
         # 各スロットの名前マスクと中身の有無
@@ -180,15 +195,29 @@ class PlayerTracker:
     def _init_templates(self, img, masks, non_empty):
         """EasyOCRで名前を読み、未取得プレイヤーのテンプレートを保存する。"""
         self.init_frames += 1
-        claimed = set()  # OCRでいずれかのメンバーに照合できた行
+
+        # 既に登録済みテンプレートにNCCで一致する行は、EasyOCRを省略する。
+        # （init中は毎フレーム全行をOCRすると激遅。登録済みの行は読み直さない）
+        known_slots = set()
         for slot in non_empty:
+            for tmpl in self.templates.values():
+                if ocr_engine.ncc(masks[slot], tmpl) >= MIN_MATCH_NCC:
+                    known_slots.add(slot)
+                    break
+
+        claimed = set(known_slots)  # OCR/テンプレでいずれかのメンバーに対応した行
+        for slot in non_empty:
+            if slot in known_slots:
+                continue  # 既知の行はOCR不要
             raw = ocr_engine.read_name(img, ocr_engine.ROW_CENTERS[slot])
             cand, score = ocr_engine.fuzzy_match(raw, self.names)
-            if score >= self.init_score and cand:
+            if score >= self.init_score and cand and cand not in self.templates:
                 claimed.add(slot)
-                if cand not in self.templates:
-                    self.templates[cand] = masks[slot]
-                    print(f"  テンプレート登録: {cand}（OCR:[{raw}] 類似{score:.2f}）")
+                self.templates[cand] = masks[slot]
+                print(f"  テンプレート登録: {cand}（OCR:[{raw}] 類似{score:.2f}）")
+            else:
+                # 不一致の理由を診断できるよう、生OCRと最良候補を残す
+                print(f"  未照合 slot{slot}: OCR=[{raw}] 最良=[{cand}] 類似{score:.2f}")
 
         # 消去法: 未登録メンバーと、どれにも照合しなかった行がそれぞれ1つなら確定
         # （OCRが苦手な名前＝例: 短い英字 でも、他が揃えば埋められる）
@@ -268,19 +297,32 @@ def main():
     print(f"設定読み込み完了。初期化中{init_interval}秒 / 高速モード{fast_interval}秒間隔。")
     print(f"ウィンドウ: '{WINDOW_NAME}'")
 
+    # EasyOCRのモデル読み込みは重い。初回フレームの待ち時間にならないよう、
+    # TFT待ちの間に先にロードしておく。
+    print("EasyOCRを準備中…（初回のみ時間がかかります）")
+    t0 = time.time()
+    ocr_engine.get_reader()
+    print(f"EasyOCR準備完了（{time.time() - t0:.1f}秒）")
+
     latest = {"stats": {"initialized": False}}
     state = {"last": 0.0, "warned_size": False, "tracker": PlayerTracker(config)}
 
     def on_config(payload):
         """ホーム画面から送られた名前リストを反映し、config.jsonを更新する。"""
-        config["names"] = extract_names(payload)
+        new_names = extract_names(payload)
+        if new_names == config.get("names"):
+            return config  # 同じ内容の再送はトラッカーを作り直さない（再OCR回避）
+        config["names"] = new_names
         # チーム分け・色はOverwolf側が持つので、ここには残さない
         config.pop("teamA", None)
         config.pop("teamB", None)
         save_config(config)
-        # 新しい名前リストでトラッカーを作り直す（テンプレートを取り直す）
-        state["tracker"] = PlayerTracker(config)
-        print(f"設定を更新しました（{len(config['names'])}人）。テンプレートを再取得します。")
+        # 新しい名前リストでトラッカーを作り直すが、続投する名前のテンプレ等は引き継ぐ
+        tracker = PlayerTracker(config)
+        tracker.inherit(state["tracker"])
+        state["tracker"] = tracker
+        print(f"設定を更新しました（{len(new_names)}人）。"
+              f"テンプレート保持: {len(tracker.templates)}人")
         return config
 
     # 最新の集計をHTTPで配信し、設定POSTも受け付ける（Overwolfと連携）
