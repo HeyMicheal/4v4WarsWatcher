@@ -1,6 +1,9 @@
 // オーバーレイ表示ロジック
-//   HP・チーム名・メンバー → Pythonワーカーの /stats (HTTP) から取得
-//   生存/脱落          → Overwolf GEP (live_client_data.all_players の isDead)
+//   各プレイヤーの 位置・HP → Pythonワーカーの /stats (HTTP) から取得
+//   チーム分け・色          → ホーム画面の設定（localStorage）
+//   生存/脱落              → Overwolf GEP (live_client_data.all_players の isDead)
+// ワーカーは「誰が・どのY位置で・何HPか」だけを返す。チームへの振り分け・
+// 合計HP・マーカー色・生存数はすべてこのオーバーレイ側で組み立てる。
 
 // ワーカーのHTTP配信先（worker/config.json の http_port と合わせる）
 const WORKER_URL = 'http://127.0.0.1:17653/stats';
@@ -8,10 +11,61 @@ const POLL_MS = 500;
 
 const GEP_FEATURES = ['live_client_data'];
 
-let workerStats = null;     // ワーカーから取得した最新の集計
-let deadByName = {};        // プレイヤー名(小文字) -> 脱落しているか
+// ホーム画面のチーム設定の保存キー（home.js と合わせる）
+const TEAMS_KEY = '4v4wars_teams';
 
-// ── ワーカーからHPを取得 ──
+let workerStats = null;     // ワーカーから取得した最新のプレイヤー情報
+let deadByName = {};        // プレイヤー名(小文字) -> 脱落しているか
+let teams = loadTeams();    // {a:{name,members[],color}, b:{...}}
+
+// ── ホーム画面のチーム設定を読み込む ──
+function loadTeams() {
+  const def = {
+    a: { name: 'Team A', members: [], color: '#4a90d9' },
+    b: { name: 'Team B', members: [], color: '#d9604a' },
+  };
+  try {
+    const data = JSON.parse(localStorage.getItem(TEAMS_KEY));
+    if (!data) return def;
+    return {
+      a: toSide(data.teamA, def.a),
+      b: toSide(data.teamB, def.b),
+    };
+  } catch (e) {
+    return def;
+  }
+}
+
+// 保存形式 {name, members:[{name,tag}], color} を {name, members:[名前], color} に正規化
+function toSide(team, fallback) {
+  if (!team) return fallback;
+  return {
+    name: team.name || fallback.name,
+    members: (team.members || []).map((m) => (typeof m === 'string' ? m : m.name)),
+    color: team.color || fallback.color,
+  };
+}
+
+// 名前(小文字) -> {side, color} の対応表を作る
+function buildNameMap() {
+  const map = {};
+  ['a', 'b'].forEach((side) => {
+    teams[side].members.forEach((name) => {
+      map[name.toLowerCase()] = { side, color: teams[side].color };
+    });
+  });
+  return map;
+}
+
+// ホーム画面で設定が変わったら追従する（別ウィンドウの storage イベント）
+window.addEventListener('storage', (event) => {
+  if (event.key === TEAMS_KEY) {
+    teams = loadTeams();
+    render();
+  }
+});
+
+// ── ワーカーからプレイヤー情報を取得 ──
 async function pollWorker() {
   try {
     const res = await fetch(WORKER_URL, { cache: 'no-store' });
@@ -39,51 +93,59 @@ function updateFromAllPlayers(raw) {
 
 // ── 表示更新 ──
 function render() {
-  renderTeam('a', workerStats?.teamA);
-  renderTeam('b', workerStats?.teamB);
-  renderMarkers(workerStats?.markers);
+  const players = Array.isArray(workerStats?.players) ? workerStats.players : [];
+  // 名前(小文字) -> {y, hp}
+  const byName = {};
+  players.forEach((p) => { byName[(p.name || '').toLowerCase()] = p; });
+
+  renderTeam('a', byName);
+  renderTeam('b', byName);
+  renderMarkers(players);
 }
 
 // TFTプレイヤーリストの各行に、チーム色マーカーを重ねる
 const MARKER_X = 1672;  // 名前バンドの左側（1920x1080固定）
 
-function renderMarkers(markers) {
+function renderMarkers(players) {
   const container = document.getElementById('markers');
   container.innerHTML = '';
-  if (!Array.isArray(markers)) return;
-  markers.forEach((m) => {
+  const nameMap = buildNameMap();
+  players.forEach((p) => {
+    if (p.y == null) return;  // 位置未取得は描けない
+    const info = nameMap[(p.name || '').toLowerCase()];
+    if (!info) return;        // どちらのチームでもない名前は無視
     const dot = document.createElement('div');
     dot.className = 'team-marker';
     dot.style.left = `${MARKER_X}px`;
-    dot.style.top = `${m.y}px`;
-    dot.style.backgroundColor = m.color || '#fff';
+    dot.style.top = `${p.y}px`;
+    dot.style.backgroundColor = info.color || '#fff';
     container.appendChild(dot);
   });
 }
 
-function renderTeam(side, team) {
+function renderTeam(side, byName) {
+  const team = teams[side];
   const nameEl = document.getElementById(`team-${side}-name`);
   const hpEl = document.getElementById(`team-${side}-hp`);
   const aliveEl = document.getElementById(`team-${side}-alive`);
   const panel = document.getElementById(`team-${side}-panel`);
 
-  if (!team) {
-    // ワーカー未接続時は値を伏せる（チーム名は維持）
-    hpEl.textContent = '--';
-    aliveEl.textContent = '--';
-    panel.classList.remove('eliminated');
-    return;
-  }
+  nameEl.textContent = team.name;
+  panel.style.borderTopColor = team.color;  // チームカラーを枠上部に反映
 
-  nameEl.textContent = team.name || nameEl.textContent;
-  hpEl.textContent = (team.totalHp ?? '--');
-  if (team.color) panel.style.borderTopColor = team.color;  // チームカラーを枠上部に反映
+  // 合計HP: ワーカーが読めているメンバーのHPを合算（未取得はGEP生存に依存しない）
+  let totalHp = 0;
+  team.members.forEach((m) => {
+    const p = byName[m.toLowerCase()];
+    if (p && p.hp != null) totalHp += p.hp;
+  });
+  // ワーカー未接続時は値を伏せる（チーム名・色は維持）
+  hpEl.textContent = workerStats ? totalHp : '--';
 
-  // 生存数: ワーカーが持つメンバーのうち、GEPで脱落していない人数
-  const members = team.members || [];
-  const alive = members.filter((m) => !deadByName[(m.name || '').toLowerCase()]).length;
-  aliveEl.textContent = `${alive}/${members.length}`;
-  panel.classList.toggle('eliminated', members.length > 0 && alive === 0);
+  // 生存数: メンバーのうちGEPで脱落していない人数
+  const alive = team.members.filter((m) => !deadByName[m.toLowerCase()]).length;
+  aliveEl.textContent = `${alive}/${team.members.length}`;
+  panel.classList.toggle('eliminated', team.members.length > 0 && alive === 0);
 }
 
 // ── GEP イベント購読 ──

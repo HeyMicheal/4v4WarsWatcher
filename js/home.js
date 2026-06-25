@@ -55,12 +55,11 @@ function getColor(team) {
   return document.getElementById(`team-${team}-color`).value;
 }
 
-// ワーカーへ設定を送る。membersはRiotIDのゲーム名部分（#タグより前）にする。
+// ワーカーへ名前リストだけ送る（チーム分け・色はOverwolf側が持つ）。
+// 名前はRiotIDのゲーム名部分（#タグより前）。OCRが読むTFT表示名に合わせる。
 function sendToWorker(data) {
-  const payload = {
-    teamA: { name: data.teamA.name, members: data.teamA.members.map((m) => m.name), color: data.teamA.color },
-    teamB: { name: data.teamB.name, members: data.teamB.members.map((m) => m.name), color: data.teamB.color },
-  };
+  const names = [...data.teamA.members, ...data.teamB.members].map((m) => m.name);
+  const payload = { names };
   fetch(WORKER_CONFIG_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

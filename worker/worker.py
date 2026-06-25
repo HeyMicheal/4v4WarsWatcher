@@ -4,9 +4,9 @@ OCRワーカー本体
 常駐してTFTの起動を待ち受け、TFTウィンドウをWGCでキャプチャしながら：
   1. 名前画像テンプレート照合で各行が誰かを特定（初回のみEasyOCRで登録）
   2. 各プレイヤーのHPをtesseractで読み取り（一括読みで高速）
-  3. チームごとの合計HPを集計
-  4. http://127.0.0.1:<port>/stats で配信（Overwolfオーバーレイが取得）
-チーム設定はホーム画面から POST /config で受け取る。生存判定はOverwolf GEP側。
+  3. 「誰が・画面のどのY位置で・何HPか」を http://127.0.0.1:<port>/stats で配信
+名前リストはホーム画面から POST /config で受け取る。
+チーム分け・色・合計・生存判定はすべてOverwolf側が担う。
 
 実行:
     python worker.py     （Ctrl+Cで終了。自動起動はREADME参照）
@@ -66,22 +66,43 @@ def setup_logging():
 
 
 DEFAULT_CONFIG = {
-    "teamA": {"name": "Team A", "members": [], "color": "#4a90d9"},
-    "teamB": {"name": "Team B", "members": [], "color": "#d9604a"},
-    "match_threshold": 0.45,
+    # 照合対象の全プレイヤー名（チーム区別なし）。チーム分け・色はOverwolf側が持つ。
+    "names": [],
     "interval_seconds": 3,
     "fast_interval_seconds": 0.5,
     "http_port": 17653,
 }
 
 
+def extract_names(payload):
+    """設定ペイロードから名前リストを取り出す。
+    新形式の {"names": [...]} を優先し、旧形式の teamA/teamB.members にも対応する。"""
+    if isinstance(payload.get("names"), list):
+        return [str(n) for n in payload["names"] if n]
+    names = []
+    for key in ("teamA", "teamB"):
+        team = payload.get(key)
+        if isinstance(team, dict):
+            for m in team.get("members", []):
+                # members は文字列 or {"name": ...} のどちらもあり得る
+                name = m.get("name") if isinstance(m, dict) else m
+                if name:
+                    names.append(str(name))
+    return names
+
+
 def load_config():
-    """config.json を読み込む。なければ既定値（メンバー空）で起動し、ホーム画面からの設定を待つ。"""
+    """config.json を読み込む。なければ既定値（名前空）で起動し、ホーム画面からの設定を待つ。"""
     if not os.path.exists(CONFIG_PATH):
         print("config.json がありません。ホーム画面からの設定を待ちます。")
         return dict(DEFAULT_CONFIG)
     with open(CONFIG_PATH, encoding="utf-8") as f:
-        return {**DEFAULT_CONFIG, **json.load(f)}
+        raw = json.load(f)
+    config = {**DEFAULT_CONFIG, **raw}
+    # 旧形式（teamA/teamB）のconfig.jsonからも名前を拾えるようにする
+    if not config.get("names"):
+        config["names"] = extract_names(raw)
+    return config
 
 
 def save_config(config):
@@ -100,32 +121,29 @@ MAX_INIT_FRAMES = 6
 
 class PlayerTracker:
     """
-    名前画像テンプレート照合で各行が誰かを特定し、HPを保持する。
+    名前画像テンプレート照合で各行が誰かを特定し、HPと表示位置を保持する。
 
     - 初期化フェーズ: EasyOCRで名前を読んで登録名と照合し、各プレイヤーの
       「名前画像」をテンプレートとして記憶する（全員揃うまで毎フレーム試行）。
     - 通常フェーズ: 各行の名前画像をテンプレートと照合（OCR不要・高速）。
       並び替えに対応するため、行とプレイヤーを1対1で割り当てる。
-    生存判定はOverwolf GEPに任せ、ここはHP読み取りに専念する。
+
+    出力は「誰が・画面のどのY位置で・何HPか」だけ。チーム分け・色・合計・
+    生存判定はOverwolf側が担うため、ここでは一切扱わない。
     """
 
     def __init__(self, config):
         self.init_score = config.get("init_match_score", INIT_MATCH_SCORE)
-        # 設定はスナップショットを持つ（外部のconfig辞書が後で書き換わっても影響を受けない）
-        self.team_a = {"name": config["teamA"]["name"],
-                       "members": list(config["teamA"]["members"]),
-                       "color": config["teamA"].get("color", "#4a90d9")}
-        self.team_b = {"name": config["teamB"]["name"],
-                       "members": list(config["teamB"]["members"]),
-                       "color": config["teamB"].get("color", "#d9604a")}
-        self.all_members = self.team_a["members"] + self.team_b["members"]
-        self.last_hp = {m: None for m in self.all_members}   # member -> HP
-        self.templates = {}        # member -> 名前画像マスク
+        # 名前リストはスナップショットを持つ（外部のconfig辞書が後で書き換わっても影響を受けない）
+        self.names = list(config.get("names", []))
+        self.last_hp = {m: None for m in self.names}   # name -> HP
+        self.last_y = {m: None for m in self.names}    # name -> 画面上のY中心
+        self.templates = {}        # name -> 名前画像マスク
         self.initialized = False   # 全員のテンプレートが揃ったか
         self.init_frames = 0       # 初期化を試したフレーム数
 
     def update(self, img):
-        """1フレームを処理し、チームごとのHP集計を返す。"""
+        """1フレームを処理し、プレイヤーごとの位置・HPを返す。"""
         # 各スロットの名前マスクと中身の有無
         masks = [ocr_engine.name_mask(img, cy) for cy in ocr_engine.ROW_CENTERS]
         non_empty = [
@@ -138,43 +156,26 @@ class PlayerTracker:
         # 行→プレイヤーの割り当て（テンプレートがある分だけ）
         assign = self._assign(masks, non_empty)
 
-        # 割り当てた行のHPを一括で読んで更新
+        # 割り当てた行のHPを一括で読んで更新（位置も記録）
         hps = ocr_engine.read_hps(img, list(assign.keys()))
-        for slot, member in assign.items():
+        for slot, name in assign.items():
+            self.last_y[name] = ocr_engine.ROW_CENTERS[slot]
             if hps.get(slot) is not None:
-                self.last_hp[member] = hps[slot]
+                self.last_hp[name] = hps[slot]
 
         return assign, {
             "updated": datetime.now().isoformat(timespec="seconds"),
             "initialized": self.initialized,
-            "teamA": self._team_stat(self.team_a),
-            "teamB": self._team_stat(self.team_b),
-            "markers": self._markers(assign),
+            "players": self._players(),
         }
 
-    def _markers(self, assign):
-        """
-        割り当てた各行に、そのプレイヤーのチーム色マーカー情報を付ける。
-        オーバーレイがこのY位置(画面座標)に色マークを重ねる。
-        """
-        member_team = {}
-        for m in self.team_a["members"]:
-            member_team[m] = ("a", self.team_a["color"])
-        for m in self.team_b["members"]:
-            member_team[m] = ("b", self.team_b["color"])
-
-        markers = []
-        for slot, member in assign.items():
-            info = member_team.get(member)
-            if not info:
-                continue
-            side, color = info
-            markers.append({
-                "y": ocr_engine.ROW_CENTERS[slot],  # 画面上のY中心(1920x1080)
-                "side": side,
-                "color": color,
-            })
-        return markers
+    def _players(self):
+        """全プレイヤーの最新の位置・HPを返す。
+        y は画面上のY中心(1920x1080基準)で、未取得なら null。HPも未取得なら null。"""
+        return [
+            {"name": name, "y": self.last_y.get(name), "hp": self.last_hp.get(name)}
+            for name in self.names
+        ]
 
     def _init_templates(self, img, masks, non_empty):
         """EasyOCRで名前を読み、未取得プレイヤーのテンプレートを保存する。"""
@@ -182,7 +183,7 @@ class PlayerTracker:
         claimed = set()  # OCRでいずれかのメンバーに照合できた行
         for slot in non_empty:
             raw = ocr_engine.read_name(img, ocr_engine.ROW_CENTERS[slot])
-            cand, score = ocr_engine.fuzzy_match(raw, self.all_members)
+            cand, score = ocr_engine.fuzzy_match(raw, self.names)
             if score >= self.init_score and cand:
                 claimed.add(slot)
                 if cand not in self.templates:
@@ -191,38 +192,38 @@ class PlayerTracker:
 
         # 消去法: 未登録メンバーと、どれにも照合しなかった行がそれぞれ1つなら確定
         # （OCRが苦手な名前＝例: 短い英字 でも、他が揃えば埋められる）
-        missing = [m for m in self.all_members if m not in self.templates]
+        missing = [m for m in self.names if m not in self.templates]
         free = [s for s in non_empty if s not in claimed]
         if len(missing) == 1 and len(free) == 1:
             self.templates[missing[0]] = masks[free[0]]
             print(f"  テンプレート登録(消去法): {missing[0]}")
 
-        if len(self.templates) >= len(self.all_members):
+        if len(self.templates) >= len(self.names):
             self.initialized = True
             print("テンプレート照合の準備完了。以降は高速モードで動作します。")
         elif self.init_frames >= MAX_INIT_FRAMES:
             self.initialized = True
-            missing = [m for m in self.all_members if m not in self.templates]
+            missing = [m for m in self.names if m not in self.templates]
             print(f"テンプレート照合を開始します（未登録: {missing}）。")
-            print("  ※ 未登録プレイヤーはHP未取得になります。config.jsonの名前を確認してください。")
+            print("  ※ 未登録プレイヤーはHP未取得になります。名前設定を確認してください。")
 
     def _assign(self, masks, non_empty):
-        """非空行をテンプレートに1対1で貪欲割り当て。{slot: member} を返す。"""
+        """非空行をテンプレートに1対1で貪欲割り当て。{slot: name} を返す。"""
         pairs = []
         for slot in non_empty:
-            for member, tmpl in self.templates.items():
-                pairs.append((ocr_engine.ncc(masks[slot], tmpl), slot, member))
+            for name, tmpl in self.templates.items():
+                pairs.append((ocr_engine.ncc(masks[slot], tmpl), slot, name))
         pairs.sort(reverse=True)
 
         used_slots, used_members, assign = set(), set(), {}
-        for sim, slot, member in pairs:
+        for sim, slot, name in pairs:
             if sim < MIN_MATCH_NCC:
                 break
-            if slot in used_slots or member in used_members:
+            if slot in used_slots or name in used_members:
                 continue
-            assign[slot] = member
+            assign[slot] = name
             used_slots.add(slot)
-            used_members.add(member)
+            used_members.add(name)
 
         # 残った行とプレイヤーがそれぞれ1つだけなら、消去法で確定させる
         # （金枠などで1人だけ照合が閾値を割っても、候補が1つなので埋められる）
@@ -232,24 +233,6 @@ class PlayerTracker:
             assign[rest_slots[0]] = rest_members[0]
 
         return assign
-
-    def _team_stat(self, team):
-        members = []
-        total_hp = 0
-        known = 0
-        for m in team["members"]:
-            hp = self.last_hp.get(m)
-            if hp is not None:
-                total_hp += hp
-                known += 1
-            members.append({"name": m, "hp": hp})
-        return {
-            "name": team["name"],
-            "color": team["color"],
-            "totalHp": total_hp,
-            "hpKnown": known,  # HPが取得できている人数（生存数ではない）
-            "members": members,
-        }
 
 
 def frame_to_image(frame: Frame) -> Image.Image:
@@ -288,15 +271,16 @@ def main():
     latest = {"stats": {"initialized": False}}
     state = {"last": 0.0, "warned_size": False, "tracker": PlayerTracker(config)}
 
-    def on_config(team_config):
-        """ホーム画面から送られたチーム設定を反映し、config.jsonを更新する。"""
-        config["teamA"] = team_config.get("teamA", config["teamA"])
-        config["teamB"] = team_config.get("teamB", config["teamB"])
+    def on_config(payload):
+        """ホーム画面から送られた名前リストを反映し、config.jsonを更新する。"""
+        config["names"] = extract_names(payload)
+        # チーム分け・色はOverwolf側が持つので、ここには残さない
+        config.pop("teamA", None)
+        config.pop("teamB", None)
         save_config(config)
-        # 新しいロスターでトラッカーを作り直す（テンプレートを取り直す）
+        # 新しい名前リストでトラッカーを作り直す（テンプレートを取り直す）
         state["tracker"] = PlayerTracker(config)
-        n = len(config["teamA"]["members"]) + len(config["teamB"]["members"])
-        print(f"設定を更新しました（{n}人）。テンプレートを再取得します。")
+        print(f"設定を更新しました（{len(config['names'])}人）。テンプレートを再取得します。")
         return config
 
     # 最新の集計をHTTPで配信し、設定POSTも受け付ける（Overwolfと連携）
@@ -351,11 +335,11 @@ def main():
         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
             json.dump(stats, f, ensure_ascii=False, indent=2)
 
-        a, b = stats["teamA"], stats["teamB"]
+        players = stats["players"]
+        known = sum(1 for p in players if p["hp"] is not None)
         print(
             f"[{stats['updated']}] サイクル {dt:.2f}秒  "
-            f"| {a['name']}: HP{a['totalHp']} (読取{a['hpKnown']}/4)  "
-            f"| {b['name']}: HP{b['totalHp']} (読取{b['hpKnown']}/4)"
+            f"| HP読取 {known}/{len(players)}人"
         )
         if dt > interval:
             print(f"  ※ サイクル({dt:.2f}秒)が間隔({interval}秒)を超過しています")
