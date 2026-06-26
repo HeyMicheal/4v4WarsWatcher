@@ -83,7 +83,8 @@ body {
   flex-direction: column;
   flex: 1;
   padding: 20px 28px 16px;
-  overflow: hidden;
+  overflow-y: auto;     /* 下のパネルが増えてもスクロールで見られる */
+  overflow-x: hidden;
   user-select: none;
 }
 
@@ -116,7 +117,8 @@ header .subtitle {
 
 /* チームカード */
 main {
-  flex: 1;
+  flex: 0 0 auto;   /* 固定高さにして、下のパネルはその下にスクロールで並べる */
+  height: 300px;
   overflow: hidden;
 }
 
@@ -346,3 +348,104 @@ footer {
   color: #777;
   margin: 4px 0 0;
 }
+
+/* ── プレイヤー対応（手動リカバリ） ── */
+.assign-panel {
+  margin: 14px 18px 0;
+  padding: 12px 14px;
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+}
+.assign-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.assign-head h2 {
+  font-size: 13px;
+  color: #e8e8f0;
+  margin: 0;
+}
+.assign-hint {
+  font-size: 11px;
+  color: #777;
+  margin: 3px 0 0;
+}
+.btn-refresh {
+  flex-shrink: 0;
+  background: #2a2a4a;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  color: #cce;
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-refresh:hover { background: #3a3a5a; }
+
+.assign-rows {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.assign-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.assign-img {
+  height: 30px;
+  border-radius: 4px;
+  background: #0a0a14;
+  border: 1px solid #33335a;
+}
+.assign-select {
+  flex: 1;
+  background: #0e0e1a;
+  border: 1px solid #33335a;
+  border-radius: 4px;
+  color: #e8e8f0;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+.assign-select:focus { outline: none; border-color: #4a90d9; }
+/* OCR下書きが入っている行は枠色で示す */
+.assign-select.from-ocr { border-color: #3a7a4a; }
+.assign-hp {
+  flex-shrink: 0;
+  width: 56px;
+  text-align: right;
+  font-size: 12px;
+  color: #aab;
+}
+
+.assign-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 10px;
+}
+#assign-msg {
+  font-size: 12px;
+  color: #8a8;
+  margin-right: auto;
+}
+.btn-assign {
+  background: #f0c040;
+  border: none;
+  border-radius: 4px;
+  color: #1a1a2e;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 18px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-assign:hover { background: #ffd060; }

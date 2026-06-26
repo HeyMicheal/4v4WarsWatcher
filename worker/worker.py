@@ -2,10 +2,12 @@
 OCRワーカー本体
 
 常駐してTFTの起動を待ち受け、TFTウィンドウをWGCでキャプチャしながら：
-  1. 名前画像テンプレート照合で各行が誰かを特定（初回のみEasyOCRで登録）
-  2. 各プレイヤーのHPをtesseractで読み取り（一括読みで高速）
-  3. 「誰が・画面のどのY位置で・何HPか」を http://127.0.0.1:<port>/stats で配信
-名前リストはホーム画面から POST /config で受け取る。
+  1. 各行(名前画像)を匿名クラスタとしてNCCで追跡（並び替えに追従・確実）
+  2. 名前未確定のクラスタをEasyOCRで読んで登録名へ照合し下書き（命名）
+  3. 各プレイヤーのHPをtesseractで読み取り（一括読みで高速）
+  4. 「誰が・画面のどのY位置で・何HPか」を http://127.0.0.1:<port>/stats で配信
+名前リストはホーム画面から POST /config で受け取る。OCRが読めない時は
+ホーム画面が GET /rows で行画像を取得し、POST /assign で手動対応できる。
 チーム分け・色・合計・生存判定はすべてOverwolf側が担う。
 
 実行:
@@ -111,157 +113,232 @@ def save_config(config):
         json.dump(config, f, ensure_ascii=False, indent=2)
 
 
-# テンプレート照合で行をプレイヤーに割り当てる最低類似度
+# 行(名前画像)をクラスタに割り当てる最低NCC類似度
 MIN_MATCH_NCC = 0.30
-# 初期化時にEasyOCRの照合を採用する最低スコア（誤テンプレート防止のため高め）
+# OCR下書きを採用する最低スコア（誤命名防止のため高め）
 INIT_MATCH_SCORE = 0.55
-# この回数フレームを試しても全員揃わなければ、揃った分だけで高速モードに移る
-MAX_INIT_FRAMES = 6
+# 名前未確定のクラスタを各々EasyOCRする最大回数（これを使い切ったら手動待ち）
+MAX_OCR_TRIES = 5
+# 表示用の名前画像クロップ範囲（名前＋HPが入る帯。手動対応で人が読む用）
+DISP_X = (1655, 1858)
+
+
+def _png_b64(pil_img):
+    """PIL画像をPNGのdata URL(base64)にする。ホーム画面の<img>でそのまま使える。"""
+    import io
+    import base64
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+class Cluster:
+    """画面上の1人ぶんの名前画像（並び替えにNCCで追従する追跡単位）。"""
+
+    def __init__(self, cid, template, crop):
+        self.id = cid
+        self.template = template   # NCC照合用マスク
+        self.crop = crop           # 表示用RGB画像(PIL)
+        self.ocr_name = None       # OCR下書きで付いた名前
+        self.manual_name = None    # ホーム画面で手動指定された名前（最優先）
+        self.guess_cand = None     # OCRの最良候補（重複解消前。下書きの素材）
+        self.guess_score = 0.0
+        self.ocr_tries = 0         # この行をOCRした回数
+        self.last_y = None
+        self.last_hp = None
+
+    @property
+    def name(self):
+        # 手動指定があれば最優先、なければOCR下書き
+        return self.manual_name or self.ocr_name
 
 
 class PlayerTracker:
     """
-    名前画像テンプレート照合で各行が誰かを特定し、HPと表示位置を保持する。
+    各行(名前画像)を匿名クラスタとしてNCCで追跡し、あとから名前を付ける。
 
-    - 初期化フェーズ: EasyOCRで名前を読んで登録名と照合し、各プレイヤーの
-      「名前画像」をテンプレートとして記憶する（全員揃うまで毎フレーム試行）。
-    - 通常フェーズ: 各行の名前画像をテンプレートと照合（OCR不要・高速）。
-      並び替えに対応するため、行とプレイヤーを1対1で割り当てる。
+    - 追跡: 全非空行をクラスタ化し、並び替えにNCCで追従（OCR不要・確実）。
+      これで8人全員を最初から追跡でき、HPも位置で読める。
+    - 命名(下書き): 名前未確定のクラスタをEasyOCRで読み、登録名へ照合して
+      下書きする。複数こぼれても追跡は崩れない。
+    - 命名(手動): ホーム画面で「行→プレイヤー名」を指定すると最優先で確定。
+      OCRが読めなかった時のリカバリ手段。
 
-    出力は「誰が・画面のどのY位置で・何HPか」だけ。チーム分け・色・合計・
-    生存判定はOverwolf側が担うため、ここでは一切扱わない。
+    出力(/stats)は「名前の付いたクラスタの 名前・Y位置・HP」だけ。チーム分け・
+    色・合計・生存判定はOverwolf側が担う。
     """
 
     def __init__(self, config):
         self.init_score = config.get("init_match_score", INIT_MATCH_SCORE)
         # 名前リストはスナップショットを持つ（外部のconfig辞書が後で書き換わっても影響を受けない）
         self.names = list(config.get("names", []))
-        self.last_hp = {m: None for m in self.names}   # name -> HP
-        self.last_y = {m: None for m in self.names}    # name -> 画面上のY中心
-        self.templates = {}        # name -> 名前画像マスク
-        self.initialized = False   # 全員のテンプレートが揃ったか
-        self.init_frames = 0       # 初期化を試したフレーム数
+        self.clusters = []   # Cluster のリスト
+        self.next_id = 0
 
     def inherit(self, prev):
-        """前のトラッカーから、引き続き存在する名前のテンプレート・HP・位置を引き継ぐ。
-        設定更新（メンバー追加など）のたびに全員分のEasyOCRをやり直さないため。"""
+        """前のトラッカーからクラスタ（テンプレ・画像・命名・HP）を引き継ぐ。
+        設定更新（メンバー追加など）でも全員分のEasyOCRをやり直さないため。"""
         if not prev:
             return
-        for name in self.names:
-            if name in prev.templates:
-                self.templates[name] = prev.templates[name]
-            if prev.last_hp.get(name) is not None:
-                self.last_hp[name] = prev.last_hp[name]
-            if prev.last_y.get(name) is not None:
-                self.last_y[name] = prev.last_y[name]
-        if self.names and len(self.templates) >= len(self.names):
-            self.initialized = True  # 全員のテンプレが揃っていれば即高速モード
+        for c in prev.clusters:
+            nc = Cluster(c.id, c.template, c.crop)
+            nc.ocr_tries = c.ocr_tries
+            nc.last_y, nc.last_hp = c.last_y, c.last_hp
+            # 名前は新しいリストに存在する物だけ引き継ぐ
+            if c.manual_name in self.names:
+                nc.manual_name = c.manual_name
+            if c.ocr_name in self.names:
+                nc.ocr_name = c.ocr_name
+            if c.guess_cand in self.names:
+                nc.guess_cand, nc.guess_score = c.guess_cand, c.guess_score
+            self.clusters.append(nc)
+            self.next_id = max(self.next_id, c.id + 1)
+
+    def set_manual(self, cid, name):
+        """ホーム画面からの手動指定を反映する（name=空/Noneで解除）。"""
+        for c in self.clusters:
+            if c.id == cid:
+                c.manual_name = name if name else None
+                return
+
+    def needs_slow(self):
+        """OCR下書きを試している間は遅いモード（EasyOCRが重いため）。"""
+        if not self.clusters:
+            return True
+        return any(c.name is None and c.ocr_tries < MAX_OCR_TRIES for c in self.clusters)
 
     def update(self, img):
         """1フレームを処理し、プレイヤーごとの位置・HPを返す。"""
-        # 各スロットの名前マスクと中身の有無
         masks = [ocr_engine.name_mask(img, cy) for cy in ocr_engine.ROW_CENTERS]
-        non_empty = [
-            i for i, m in enumerate(masks) if not ocr_engine.mask_is_empty(m)
-        ]
+        non_empty = [i for i, m in enumerate(masks) if not ocr_engine.mask_is_empty(m)]
 
-        if not self.initialized:
-            self._init_templates(img, masks, non_empty)
+        # 行→クラスタをNCCで1対1に割り当て（並び替えに追従）
+        slot_cluster = self._match_slots(masks, non_empty)
 
-        # 行→プレイヤーの割り当て（テンプレートがある分だけ）
-        assign = self._assign(masks, non_empty)
+        # 割当されなかった行は新規クラスタにする（人数上限まで）
+        cap = max(len(self.names), 8)
+        for slot in non_empty:
+            if slot not in slot_cluster and len(self.clusters) < cap:
+                c = Cluster(self.next_id, masks[slot], self._crop_disp(img, slot))
+                self.next_id += 1
+                self.clusters.append(c)
+                slot_cluster[slot] = c
 
-        # 割り当てた行のHPを一括で読んで更新（位置も記録）
-        hps = ocr_engine.read_hps(img, list(assign.keys()))
-        for slot, name in assign.items():
-            self.last_y[name] = ocr_engine.ROW_CENTERS[slot]
+        # 位置・表示画像を更新
+        for slot, c in slot_cluster.items():
+            c.last_y = ocr_engine.ROW_CENTERS[slot]
+            c.crop = self._crop_disp(img, slot)
+
+        # 割り当てた行のHPを一括で読んで更新
+        hps = ocr_engine.read_hps(img, list(slot_cluster.keys()))
+        for slot, c in slot_cluster.items():
             if hps.get(slot) is not None:
-                self.last_hp[name] = hps[slot]
+                c.last_hp = hps[slot]
 
-        return assign, {
+        # OCR下書き（未確定クラスタを少数回だけ読む）
+        self._ocr_draft(img, slot_cluster)
+        # OCR下書き同士の名前重複を解消して確定
+        self._resolve_names()
+
+        named = sum(1 for c in self.clusters if c.name)
+        return slot_cluster, {
             "updated": datetime.now().isoformat(timespec="seconds"),
-            "initialized": self.initialized,
+            "named": named,
+            "total": len(self.clusters),
             "players": self._players(),
         }
 
-    def _players(self):
-        """全プレイヤーの最新の位置・HPを返す。
-        y は画面上のY中心(1920x1080基準)で、未取得なら null。HPも未取得なら null。"""
-        return [
-            {"name": name, "y": self.last_y.get(name), "hp": self.last_hp.get(name)}
-            for name in self.names
-        ]
-
-    def _init_templates(self, img, masks, non_empty):
-        """EasyOCRで名前を読み、未取得プレイヤーのテンプレートを保存する。"""
-        self.init_frames += 1
-
-        # 既に登録済みテンプレートにNCCで一致する行は、EasyOCRを省略する。
-        # （init中は毎フレーム全行をOCRすると激遅。登録済みの行は読み直さない）
-        known_slots = set()
-        for slot in non_empty:
-            for tmpl in self.templates.values():
-                if ocr_engine.ncc(masks[slot], tmpl) >= MIN_MATCH_NCC:
-                    known_slots.add(slot)
-                    break
-
-        claimed = set(known_slots)  # OCR/テンプレでいずれかのメンバーに対応した行
-        for slot in non_empty:
-            if slot in known_slots:
-                continue  # 既知の行はOCR不要
-            raw = ocr_engine.read_name(img, ocr_engine.ROW_CENTERS[slot])
-            cand, score = ocr_engine.fuzzy_match(raw, self.names)
-            if score >= self.init_score and cand and cand not in self.templates:
-                claimed.add(slot)
-                self.templates[cand] = masks[slot]
-                print(f"  テンプレート登録: {cand}（OCR:[{raw}] 類似{score:.2f}）")
-            else:
-                # 不一致の理由を診断できるよう、生OCRと最良候補を残す
-                print(f"  未照合 slot{slot}: OCR=[{raw}] 最良=[{cand}] 類似{score:.2f}")
-
-        # 消去法: 未登録メンバーと、どれにも照合しなかった行がそれぞれ1つなら確定
-        # （OCRが苦手な名前＝例: 短い英字 でも、他が揃えば埋められる）
-        missing = [m for m in self.names if m not in self.templates]
-        free = [s for s in non_empty if s not in claimed]
-        if len(missing) == 1 and len(free) == 1:
-            self.templates[missing[0]] = masks[free[0]]
-            print(f"  テンプレート登録(消去法): {missing[0]}")
-
-        if len(self.templates) >= len(self.names):
-            self.initialized = True
-            print("テンプレート照合の準備完了。以降は高速モードで動作します。")
-        elif self.init_frames >= MAX_INIT_FRAMES:
-            self.initialized = True
-            missing = [m for m in self.names if m not in self.templates]
-            print(f"テンプレート照合を開始します（未登録: {missing}）。")
-            print("  ※ 未登録プレイヤーはHP未取得になります。名前設定を確認してください。")
-
-    def _assign(self, masks, non_empty):
-        """非空行をテンプレートに1対1で貪欲割り当て。{slot: name} を返す。"""
+    def _match_slots(self, masks, non_empty):
+        """非空行を既存クラスタにNCCで1対1割り当て。{slot: Cluster} を返す。"""
         pairs = []
         for slot in non_empty:
-            for name, tmpl in self.templates.items():
-                pairs.append((ocr_engine.ncc(masks[slot], tmpl), slot, name))
-        pairs.sort(reverse=True)
+            for c in self.clusters:
+                pairs.append((ocr_engine.ncc(masks[slot], c.template), slot, c))
+        pairs.sort(key=lambda p: p[0], reverse=True)
 
-        used_slots, used_members, assign = set(), set(), {}
-        for sim, slot, name in pairs:
+        used_slots, used_ids, res = set(), set(), {}
+        for sim, slot, c in pairs:
             if sim < MIN_MATCH_NCC:
                 break
-            if slot in used_slots or name in used_members:
+            if slot in used_slots or c.id in used_ids:
                 continue
-            assign[slot] = name
+            res[slot] = c
             used_slots.add(slot)
-            used_members.add(name)
+            used_ids.add(c.id)
+        return res
 
-        # 残った行とプレイヤーがそれぞれ1つだけなら、消去法で確定させる
-        # （金枠などで1人だけ照合が閾値を割っても、候補が1つなので埋められる）
-        rest_slots = [s for s in non_empty if s not in used_slots]
-        rest_members = [m for m in self.templates if m not in used_members]
-        if len(rest_slots) == 1 and len(rest_members) == 1:
-            assign[rest_slots[0]] = rest_members[0]
+    def _crop_disp(self, img, slot):
+        """表示用の名前画像（名前＋HPの帯）を2倍に拡大して返す。"""
+        cy = ocr_engine.ROW_CENTERS[slot]
+        crop = img.crop((DISP_X[0], cy - 17, DISP_X[1], cy + 17))
+        return crop.resize((crop.width * 2, crop.height * 2), Image.LANCZOS)
 
-        return assign
+    def _ocr_draft(self, img, slot_cluster):
+        """名前未確定のクラスタをEasyOCRで読み、最良候補を下書きとして蓄える。"""
+        for slot, c in slot_cluster.items():
+            if c.name is not None or c.ocr_tries >= MAX_OCR_TRIES:
+                continue
+            c.ocr_tries += 1
+            raw = ocr_engine.read_name(img, ocr_engine.ROW_CENTERS[slot])
+            cand, score = ocr_engine.fuzzy_match(raw, self.names)
+            if cand and score > c.guess_score:
+                c.guess_cand, c.guess_score = cand, score
+            if not (cand and score >= self.init_score):
+                print(f"  未照合 行{c.id}: OCR=[{raw}] 最良=[{cand}] 類似{score:.2f}")
+
+    def _resolve_names(self):
+        """手動指定を最優先に、OCR下書きを名前が重複しないよう一意に割り当てる。"""
+        taken = set(c.manual_name for c in self.clusters if c.manual_name)
+
+        # 下書き候補をスコア降順に、未使用の名前へ割り当てる
+        cands = sorted(
+            ((c.guess_score, c) for c in self.clusters
+             if not c.manual_name and c.guess_cand and c.guess_score >= self.init_score),
+            key=lambda x: x[0], reverse=True,
+        )
+        assigned_ids = set()
+        for _, c in cands:
+            if c.guess_cand in taken:
+                c.ocr_name = None
+                continue
+            c.ocr_name = c.guess_cand
+            taken.add(c.guess_cand)
+            assigned_ids.add(c.id)
+        # 下書きに採用されなかったクラスタのOCR名はクリア（手動は触らない）
+        for c in self.clusters:
+            if not c.manual_name and c.id not in assigned_ids:
+                c.ocr_name = None
+
+        # 消去法: 未使用の名前と未命名のクラスタがそれぞれ1つなら確定
+        unnamed = [c for c in self.clusters if not c.name]
+        free_names = [n for n in self.names if n not in taken]
+        if len(free_names) == 1 and len(unnamed) == 1:
+            unnamed[0].ocr_name = free_names[0]
+
+    def _players(self):
+        """名前の付いたクラスタの 名前・Y位置・HP を返す。"""
+        return [
+            {"name": c.name, "y": c.last_y, "hp": c.last_hp}
+            for c in self.clusters if c.name
+        ]
+
+    def rows_payload(self):
+        """ホーム画面の手動対応用に、各クラスタの画像とOCR下書きを返す。"""
+        ordered = sorted(
+            self.clusters,
+            key=lambda c: c.last_y if c.last_y is not None else 9999,
+        )
+        return [
+            {
+                "id": c.id,
+                "image": _png_b64(c.crop) if c.crop else None,
+                "guess": c.ocr_name,       # OCR下書き（採用済み）
+                "manual": c.manual_name,   # 手動指定
+                "name": c.name,            # 実効名
+                "hp": c.last_hp,
+            }
+            for c in ordered
+        ]
 
 
 def frame_to_image(frame: Frame) -> Image.Image:
@@ -297,8 +374,20 @@ def main():
     print(f"設定読み込み完了。初期化中{init_interval}秒 / 高速モード{fast_interval}秒間隔。")
     print(f"ウィンドウ: '{WINDOW_NAME}'")
 
-    latest = {"stats": {"initialized": False}}
-    state = {"last": 0.0, "warned_size": False, "tracker": PlayerTracker(config)}
+    latest = {"stats": {"players": []}, "rows": []}
+    state = {"last": 0.0, "warned_size": False, "tracker": PlayerTracker(config),
+             "pending_assign": {}}
+
+    def on_assign(payload):
+        """ホーム画面で手動指定された {行ID: 名前} を、次の更新で反映するため貯める。
+        （別スレッドからトラッカーを直接いじらず、キャプチャ側で適用する）"""
+        mapping = payload.get("mappings", payload) or {}
+        for cid, name in mapping.items():
+            try:
+                state["pending_assign"][int(cid)] = name or None
+            except (ValueError, TypeError):
+                pass
+        print(f"手動対応を受信: {len(mapping)}件")
 
     def on_config(payload):
         """ホーム画面から送られた名前リストを反映し、config.jsonを更新する。"""
@@ -315,13 +404,17 @@ def main():
         tracker.inherit(state["tracker"])
         state["tracker"] = tracker
         print(f"設定を更新しました（{len(new_names)}人）。"
-              f"テンプレート保持: {len(tracker.templates)}人")
+              f"クラスタ保持: {len(tracker.clusters)}個")
         return config
 
-    # 最新の集計をHTTPで配信し、設定POSTも受け付ける（Overwolfと連携）。
+    # 最新の集計をHTTPで配信し、設定/手動対応のPOSTも受け付ける（Overwolfと連携）。
     # ホーム画面からの /config を取りこぼさないよう、重いEasyOCRより先に起動する。
-    start_stats_server(http_port, lambda: latest["stats"], on_config)
-    print(f"HTTP配信: http://127.0.0.1:{http_port}/stats （POST /config で設定更新）")
+    start_stats_server(
+        http_port, lambda: latest["stats"], on_config,
+        get_rows=lambda: latest["rows"], on_assign=on_assign,
+    )
+    print(f"HTTP配信: http://127.0.0.1:{http_port}/stats "
+          f"（/config 設定, /rows 行画像, /assign 手動対応）")
 
     # EasyOCRのモデル読み込みは重い。初回フレームの待ち時間にならないよう、
     # TFT待ちの間に先にロードしておく（この間も /config は受け付けられる）。
@@ -334,12 +427,18 @@ def main():
         """1フレームを処理して集計・配信する。"""
         tracker = state["tracker"]
         # フレームは高頻度で届くので、一定間隔に1回だけ処理する
-        # 高速モード（テンプレ準備完了後）は短い間隔で回す
-        interval = fast_interval if tracker.initialized else init_interval
+        # OCR下書き中（重い）は長め、命名が落ち着いたら高速に回す
+        interval = init_interval if tracker.needs_slow() else fast_interval
         now = time.time()
         if now - state["last"] < interval:
             return
         state["last"] = now
+
+        # ホーム画面からの手動対応をこのスレッドで反映する
+        if state["pending_assign"]:
+            for cid, name in state["pending_assign"].items():
+                tracker.set_manual(cid, name)
+            state["pending_assign"] = {}
 
         img = frame_to_image(frame)
         if img.size != EXPECTED_SIZE and not state["warned_size"]:
@@ -356,13 +455,13 @@ def main():
         # OCR処理は例外で全体を落とさず、詳細をログに残して継続する
         try:
             t0 = time.time()
-            assign, stats = tracker.update(img)
+            slot_cluster, stats = tracker.update(img)
             if DEBUG:
-                print("--- 行→プレイヤー割り当て ---")
+                print("--- 行→クラスタ割り当て ---")
                 for slot in range(len(ocr_engine.ROW_CENTERS)):
-                    member = assign.get(slot, "（なし）")
-                    hp = tracker.last_hp.get(member) if slot in assign else None
-                    print(f"  slot{slot}: {member}  HP=[{hp}]")
+                    c = slot_cluster.get(slot)
+                    if c:
+                        print(f"  slot{slot}: 行{c.id} 名前=[{c.name}] HP=[{c.last_hp}]")
             dt = time.time() - t0
         except Exception:
             import traceback
@@ -373,16 +472,15 @@ def main():
                 f.write(f"\n--- {datetime.now().isoformat()} ---\n{tb}\n")
             return
 
-        # HTTP配信用に最新の集計を更新し、ファイルにも残す
+        # HTTP配信用に最新の集計と行画像を更新し、集計はファイルにも残す
         latest["stats"] = stats
+        latest["rows"] = tracker.rows_payload()
         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
             json.dump(stats, f, ensure_ascii=False, indent=2)
 
-        players = stats["players"]
-        known = sum(1 for p in players if p["hp"] is not None)
         print(
             f"[{stats['updated']}] サイクル {dt:.2f}秒  "
-            f"| HP読取 {known}/{len(players)}人"
+            f"| 命名 {stats['named']}/{stats['total']}人"
         )
         if dt > interval:
             print(f"  ※ サイクル({dt:.2f}秒)が間隔({interval}秒)を超過しています")
@@ -412,11 +510,12 @@ def main():
         while True:
             wait_for_window(WINDOW_NAME)
             print("TFTを検出。キャプチャを開始します。")
-            # 新しい試合用に状態をリセット（テンプレートを取り直す）
+            # 新しい試合用に状態をリセット（クラスタ・テンプレートを取り直す）
             state["last"] = 0.0
             state["warned_size"] = False
             state.pop("saved_frame", None)
             state["tracker"] = PlayerTracker(config)
+            state["pending_assign"] = {}
             try:
                 run_session()
             except KeyboardInterrupt:

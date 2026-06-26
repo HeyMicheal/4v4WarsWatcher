@@ -88,6 +88,21 @@
       <p class="worker-hint">オーバーレイ起動時にこのフォルダの worker.py を自動実行します。</p>
     </section>
 
+    <section class="assign-panel">
+      <div class="assign-head">
+        <div>
+          <h2>プレイヤー対応（OCRが読めない時のリカバリ）</h2>
+          <p class="assign-hint">各行の名前画像を見て、正しいプレイヤーを選んで「確定」してください。OCRが読めた行は自動で選択済みです。</p>
+        </div>
+        <button class="btn-refresh" id="assign-refresh" onclick="refreshRows()">更新</button>
+      </div>
+      <div id="assign-rows" class="assign-rows"></div>
+      <div class="assign-foot">
+        <span id="assign-msg"></span>
+        <button class="btn-assign" id="assign-confirm" onclick="confirmAssign()">確定</button>
+      </div>
+    </section>
+
     <footer>
       <span id="status-msg"></span>
     </footer>

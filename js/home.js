@@ -14,8 +14,11 @@ function setVal(id, value) {
   document.getElementById(id).value = value;
 }
 
-// Pythonワーカーの設定更新先（worker/config.json の http_port と合わせる）
-const WORKER_CONFIG_URL = 'http://127.0.0.1:17653/config';
+// Pythonワーカーの各エンドポイント（worker/config.json の http_port と合わせる）
+const WORKER_BASE = 'http://127.0.0.1:17653';
+const WORKER_CONFIG_URL = `${WORKER_BASE}/config`;
+const WORKER_ROWS_URL = `${WORKER_BASE}/rows`;
+const WORKER_ASSIGN_URL = `${WORKER_BASE}/assign`;
 
 // ワーカー起動設定（フォルダ・Pythonコマンド）の保存キー
 const WORKER_SETTINGS_KEY = '4v4wars_worker';
@@ -67,6 +70,104 @@ function sendToWorker(data) {
   }).catch(() => {
     // ワーカー未起動などは無視（localStorageには保存済み）
   });
+}
+
+// ── プレイヤー対応（OCRが読めない時の手動リカバリ） ──
+let assignRows = [];
+
+// ドロップダウンの選択肢＝両チームの登録メンバー名
+function allMemberNames() {
+  return [...state.a, ...state.b].map((m) => m.name);
+}
+
+// ワーカーから各行の名前画像とOCR下書きを取得して一覧表示する
+async function refreshRows() {
+  const msg = document.getElementById('assign-msg');
+  msg.textContent = '取得中…';
+  try {
+    const res = await fetch(WORKER_ROWS_URL, { cache: 'no-store' });
+    assignRows = await res.json();
+    renderRows();
+    msg.textContent = assignRows.length ? '' : 'まだ行がありません（試合中に「更新」してください）';
+  } catch (e) {
+    msg.textContent = 'ワーカーに接続できません（起動しているか確認してください）';
+  }
+}
+
+function renderRows() {
+  const container = document.getElementById('assign-rows');
+  container.innerHTML = '';
+  const names = allMemberNames();
+  assignRows.forEach((r) => {
+    const row = document.createElement('div');
+    row.className = 'assign-row';
+
+    const img = document.createElement('img');
+    img.className = 'assign-img';
+    if (r.image) img.src = r.image;
+
+    const sel = document.createElement('select');
+    sel.className = 'assign-select';
+    sel.dataset.id = r.id;
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '（未割当）';
+    sel.appendChild(none);
+    names.forEach((n) => {
+      const o = document.createElement('option');
+      o.value = n;
+      o.textContent = n;
+      sel.appendChild(o);
+    });
+    // 手動指定があればそれ、なければOCR下書きを初期選択
+    const pre = r.manual || r.guess || '';
+    if (pre && names.includes(pre)) sel.value = pre;
+    // OCR下書きが入っている行は印を付ける
+    if (!r.manual && r.guess) sel.classList.add('from-ocr');
+
+    const hp = document.createElement('span');
+    hp.className = 'assign-hp';
+    hp.textContent = (r.hp != null) ? `HP ${r.hp}` : '';
+
+    row.appendChild(img);
+    row.appendChild(sel);
+    row.appendChild(hp);
+    container.appendChild(row);
+  });
+}
+
+// 選択した「行ID→名前」をワーカーへ送る
+async function confirmAssign() {
+  const selects = document.querySelectorAll('#assign-rows .assign-select');
+  const msg = document.getElementById('assign-msg');
+
+  // 同じ名前を複数行に割り当てていないかチェック
+  const mappings = {};
+  const used = {};
+  let dup = false;
+  selects.forEach((s) => {
+    mappings[s.dataset.id] = s.value;
+    if (s.value) {
+      if (used[s.value]) dup = true;
+      used[s.value] = true;
+    }
+  });
+  if (dup) {
+    msg.textContent = '同じ名前が複数の行に選ばれています。1人ずつにしてください';
+    return;
+  }
+
+  try {
+    await fetch(WORKER_ASSIGN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mappings }),
+    });
+    msg.textContent = '対応を送信しました';
+    setTimeout(() => { msg.textContent = ''; }, 2000);
+  } catch (e) {
+    msg.textContent = '送信に失敗しました（ワーカー未起動？）';
+  }
 }
 
 function load() {
