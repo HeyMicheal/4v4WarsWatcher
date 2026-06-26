@@ -106,28 +106,19 @@ body {
 }
 
 /*
- * 視力検査の環（ランドルト環）風に、左側を開けたリングで肖像を囲む。
- * - conic-gradient で色の弧を作り、左(270°)に切れ目を開ける
- * - radial-gradient のマスクで中空の輪（annulus）に切り抜く
- * 肖像中心 (PORTRAIT_X, y) に対し、要素中心を合わせて配置する。
+ * キャラ肖像の右下フチに重ねる、チーム色の塗りバッジ。
+ * 中心を (BADGE_X, y + BADGE_DY) に合わせる（JS側で座標指定）。
  */
 .team-marker {
   position: absolute;
-  width: 76px;
-  height: 76px;
-  margin-left: -38px;  /* left を肖像中心(PORTRAIT_X)に合わせる */
-  margin-top: -38px;   /* top を肖像中心に合わせる */
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;  /* left をバッジ中心に合わせる */
+  margin-top: -12px;   /* top をバッジ中心に合わせる */
   border-radius: 50%;
-  /* 色の弧。0°=上から時計回り、270°=左。左に約74°の切れ目を開ける */
-  background: conic-gradient(
-    from 0deg,
-    var(--mc, #fff) 0deg 233deg,
-    transparent 233deg 307deg,
-    var(--mc, #fff) 307deg 360deg
-  );
-  /* 半径32〜36pxだけ残して中空の輪にする（肖像の外枠を囲む） */
-  -webkit-mask: radial-gradient(circle, transparent 0 31px, #000 32px 36px, transparent 37px);
-          mask: radial-gradient(circle, transparent 0 31px, #000 32px 36px, transparent 37px);
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));  /* 暗い縁で肖像と分離 */
+  background: #fff;                       /* 色は backgroundColor をJSで上書き */
+  border: 2px solid rgba(255, 255, 255, 0.95);  /* 白フチで肖像と分離 */
+  box-sizing: border-box;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.75);
   pointer-events: none;
 }

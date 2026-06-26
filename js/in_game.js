@@ -112,11 +112,11 @@ function render() {
   renderMarkers(players);
 }
 
-// TFTプレイヤーリストの各キャラ肖像を、チーム色のリングで囲む。
+// TFTプレイヤーリストの各キャラ肖像の右下フチに、チーム色のバッジを重ねる。
 // 肖像は右端の丸いアイコン（中心 X≈1877, Y≈行中心-2, 1920x1080固定）。
-// 外枠まで囲む大きめの環にし、左側(HP側)に切れ目を開けてHPを隠さない。
-const PORTRAIT_X = 1877;
-const PORTRAIT_DY = -2;  // 行中心に対する肖像中心の縦オフセット
+// バッジ中心 = 肖像中心 + (22, 22) ≈ 右下45°のフチに半分重なる位置。
+const BADGE_X = 1899;   // 1877 + 22
+const BADGE_DY = 20;    // (行中心-2) + 22
 
 function renderMarkers(players) {
   const container = document.getElementById('markers');
@@ -126,12 +126,12 @@ function renderMarkers(players) {
     if (p.y == null) return;  // 位置未取得は描けない
     const info = nameMap[(p.name || '').toLowerCase()];
     if (!info) return;        // どちらのチームでもない名前は無視
-    const ring = document.createElement('div');
-    ring.className = 'team-marker';
-    ring.style.left = `${PORTRAIT_X}px`;
-    ring.style.top = `${p.y + PORTRAIT_DY}px`;
-    ring.style.setProperty('--mc', info.color || '#fff');  // チーム色（CSSのリング色）
-    container.appendChild(ring);
+    const badge = document.createElement('div');
+    badge.className = 'team-marker';
+    badge.style.left = `${BADGE_X}px`;
+    badge.style.top = `${p.y + BADGE_DY}px`;
+    badge.style.backgroundColor = info.color || '#fff';  // チーム色
+    container.appendChild(badge);
   });
 }
 
