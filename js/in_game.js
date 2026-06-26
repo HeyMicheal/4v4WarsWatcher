@@ -129,7 +129,7 @@ function renderMarkers(players) {
     ring.className = 'team-marker';
     ring.style.left = `${PORTRAIT_X}px`;
     ring.style.top = `${p.y}px`;
-    ring.style.borderColor = info.color || '#fff';  // チーム色のリング
+    ring.style.setProperty('--mc', info.color || '#fff');  // チーム色（CSSのリング色）
     container.appendChild(ring);
   });
 }

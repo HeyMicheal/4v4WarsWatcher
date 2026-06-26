@@ -105,17 +105,29 @@ body {
   left: 0;
 }
 
+/*
+ * 視力検査の環（ランドルト環）風に、左側を開けたリングで肖像を囲む。
+ * - conic-gradient で色の弧を作り、左(270°)に切れ目を開ける
+ * - radial-gradient のマスクで中空の輪（annulus）に切り抜く
+ * 肖像中心 (PORTRAIT_X, y) に対し、要素中心を合わせて配置する。
+ */
 .team-marker {
   position: absolute;
-  width: 58px;
-  height: 58px;
-  margin-left: -29px;  /* left を肖像中心(PORTRAIT_X)に合わせる */
-  margin-top: -29px;   /* top をy中心に合わせる */
-  border: 3px solid #fff;        /* 色は borderColor をJSで上書き */
+  width: 60px;
+  height: 60px;
+  margin-left: -30px;  /* left を肖像中心(PORTRAIT_X)に合わせる */
+  margin-top: -30px;   /* top をy中心に合わせる */
   border-radius: 50%;
-  box-sizing: border-box;
-  background: transparent;        /* 中央は肖像を見せる */
-  /* 肖像/ゲーム既存リングと区別するため、外と内に薄い暗縁をつける */
-  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+  /* 色の弧。0°=上から時計回り、270°=左。左に約74°の切れ目を開ける */
+  background: conic-gradient(
+    from 0deg,
+    var(--mc, #fff) 0deg 233deg,
+    transparent 233deg 307deg,
+    var(--mc, #fff) 307deg 360deg
+  );
+  /* 半径24〜28pxだけ残して中空の輪にする（肖像にぴったり） */
+  -webkit-mask: radial-gradient(circle, transparent 0 23px, #000 24px 28px, transparent 29px);
+          mask: radial-gradient(circle, transparent 0 23px, #000 24px 28px, transparent 29px);
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));  /* 暗い縁で肖像と分離 */
   pointer-events: none;
 }
