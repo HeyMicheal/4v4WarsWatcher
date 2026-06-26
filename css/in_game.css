@@ -122,3 +122,15 @@ body {
   box-shadow: 0 0 3px rgba(0, 0, 0, 0.75);
   pointer-events: none;
 }
+
+/* アイコンが設定されている場合は画像マーカー（周囲はチーム色リング） */
+.team-marker.has-icon {
+  width: 32px;
+  height: 32px;
+  margin-left: -16px;
+  margin-top: -16px;
+  background-color: #0a0a14;
+  background-size: cover;
+  background-position: center;
+  border-width: 3px;   /* border-color はJSでチーム色に上書き */
+}

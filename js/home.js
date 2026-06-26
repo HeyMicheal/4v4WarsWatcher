@@ -248,8 +248,11 @@ function renderMembers(team) {
   state[team].forEach((member, i) => {
     const li = document.createElement('li');
     li.className = 'member-item';
+    const iconInner = member.icon ? `<img src="${member.icon}" alt="" />` : '＋';
     li.innerHTML = `
-      <span>
+      <button class="member-icon${member.icon ? ' has-icon' : ''}"
+              onclick="openIconEditor('${team}', ${i})" title="アイコンを編集">${iconInner}</button>
+      <span class="member-label">
         <span class="member-name">${escapeHtml(member.name)}</span>
         <span class="member-tag">#${escapeHtml(member.tag)}</span>
       </span>
@@ -270,6 +273,141 @@ function showStatus(msg, isError = false) {
 
 function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── アイコン編集（アップロード→移動/拡大→円形トリミング） ──
+const ICON_E = 260;   // 編集キャンバスの一辺(px)
+const ICON_O = 160;   // 出力アイコンの一辺(px)
+// img=元画像, scale=描画倍率, base=カバー配置の基準倍率, dx/dy=元画像左上の位置
+const iconState = { team: null, index: null, img: null, scale: 1, base: 1, dx: 0, dy: 0, drag: null };
+
+function openIconEditor(team, index) {
+  iconState.team = team;
+  iconState.index = index;
+  iconState.img = null;
+  iconState.drag = null;
+  document.getElementById('icon-editor-title').textContent =
+    `アイコン編集 — ${state[team][index] ? state[team][index].name : ''}`;
+  document.getElementById('icon-editor').classList.remove('hidden');
+  const cur = state[team][index] && state[team][index].icon;
+  if (cur) loadIconImage(cur);  // 既存アイコンを下地に表示
+  else drawIcon();              // 空（円枠だけ）
+}
+
+function loadIconImage(src) {
+  const img = new Image();
+  img.onload = () => {
+    iconState.img = img;
+    // カバー配置（短辺をキャンバスに合わせて中央寄せ）
+    iconState.base = ICON_E / Math.min(img.width, img.height);
+    iconState.scale = iconState.base;
+    iconState.dx = (ICON_E - img.width * iconState.scale) / 2;
+    iconState.dy = (ICON_E - img.height * iconState.scale) / 2;
+    document.getElementById('icon-zoom').value = 1;
+    drawIcon();
+  };
+  img.src = src;
+}
+
+function onIconFile(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => loadIconImage(reader.result);
+  reader.readAsDataURL(file);
+  e.target.value = '';  // 同じファイルを連続選択できるように
+}
+
+function drawIcon() {
+  const ctx = document.getElementById('icon-canvas').getContext('2d');
+  ctx.clearRect(0, 0, ICON_E, ICON_E);
+  if (iconState.img) {
+    ctx.drawImage(iconState.img, iconState.dx, iconState.dy,
+      iconState.img.width * iconState.scale, iconState.img.height * iconState.scale);
+  }
+  // 円の外を暗くし、円枠を描く
+  const r = ICON_E / 2 - 2;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath();
+  ctx.rect(0, 0, ICON_E, ICON_E);
+  ctx.arc(ICON_E / 2, ICON_E / 2, r, 0, Math.PI * 2, true);
+  ctx.fill('evenodd');
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(ICON_E / 2, ICON_E / 2, r, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function onIconZoom(e) {
+  if (!iconState.img) return;
+  const newScale = iconState.base * parseFloat(e.target.value);
+  // キャンバス中心の画像点を固定したまま拡大する
+  const cxImg = (ICON_E / 2 - iconState.dx) / iconState.scale;
+  const cyImg = (ICON_E / 2 - iconState.dy) / iconState.scale;
+  iconState.dx = ICON_E / 2 - cxImg * newScale;
+  iconState.dy = ICON_E / 2 - cyImg * newScale;
+  iconState.scale = newScale;
+  drawIcon();
+}
+
+function iconPointer(e) {
+  const rect = document.getElementById('icon-canvas').getBoundingClientRect();
+  const t = e.touches && e.touches[0];
+  const cx = t ? t.clientX : e.clientX;
+  const cy = t ? t.clientY : e.clientY;
+  // 表示サイズと内部解像度のズレを補正
+  return { x: (cx - rect.left) * (ICON_E / rect.width), y: (cy - rect.top) * (ICON_E / rect.height) };
+}
+function iconDragStart(e) {
+  if (!iconState.img) return;
+  const p = iconPointer(e);
+  iconState.drag = { x: p.x, y: p.y, dx: iconState.dx, dy: iconState.dy };
+}
+function iconDragMove(e) {
+  if (!iconState.drag) return;
+  const p = iconPointer(e);
+  iconState.dx = iconState.drag.dx + (p.x - iconState.drag.x);
+  iconState.dy = iconState.drag.dy + (p.y - iconState.drag.y);
+  drawIcon();
+}
+function iconDragEnd() { iconState.drag = null; }
+
+function saveIconEditor() {
+  const { team, index, img } = iconState;
+  if (!img) { cancelIconEditor(); return; }
+  // 出力用キャンバスに、編集ビューと同じ配置を円形クリップで描く
+  const out = document.createElement('canvas');
+  out.width = out.height = ICON_O;
+  const octx = out.getContext('2d');
+  const f = ICON_O / ICON_E;
+  octx.beginPath();
+  octx.arc(ICON_O / 2, ICON_O / 2, ICON_O / 2, 0, Math.PI * 2);
+  octx.clip();
+  octx.drawImage(img, iconState.dx * f, iconState.dy * f,
+    img.width * iconState.scale * f, img.height * iconState.scale * f);
+  state[team][index].icon = out.toDataURL('image/png');
+  persist();
+  renderMembers(team);
+  cancelIconEditor();
+}
+
+function clearIcon() {
+  const { team, index } = iconState;
+  if (team != null && state[team] && state[team][index]) {
+    delete state[team][index].icon;
+    persist();
+    renderMembers(team);
+  }
+  cancelIconEditor();
+}
+
+function cancelIconEditor() {
+  document.getElementById('icon-editor').classList.add('hidden');
+  iconState.img = null;
+  iconState.drag = null;
 }
 
 // ウィンドウ操作
@@ -303,6 +441,21 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('title-bar-drag').addEventListener('mousedown', () => {
     overwolf.windows.dragMove(currentWindowId);
   });
+
+  // アイコン編集（ファイル選択・拡大・ドラッグ・ホイール）
+  const iconCanvas = document.getElementById('icon-canvas');
+  document.getElementById('icon-file').addEventListener('change', onIconFile);
+  document.getElementById('icon-zoom').addEventListener('input', onIconZoom);
+  iconCanvas.addEventListener('mousedown', iconDragStart);
+  window.addEventListener('mousemove', iconDragMove);
+  window.addEventListener('mouseup', iconDragEnd);
+  iconCanvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const z = document.getElementById('icon-zoom');
+    const next = Math.min(6, Math.max(1, parseFloat(z.value) + (e.deltaY < 0 ? 0.15 : -0.15)));
+    z.value = next;
+    onIconZoom({ target: z });
+  }, { passive: false });
 
   ['a', 'b'].forEach((team) => {
     const input = document.getElementById(`team-${team}-input`);

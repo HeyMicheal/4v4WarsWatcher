@@ -201,13 +201,48 @@ main {
 .member-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 9px;
   padding: 9px 10px;
   margin-bottom: 6px;
   background: #0f172a;
   border-radius: 6px;
   border: 1px solid #2a2a4a;
   animation: fadeIn 0.15s ease;
+}
+
+.member-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* メンバーのアイコン（クリックで編集モーダルを開く） */
+.member-icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px dashed #3a3a5a;
+  background: #0a0a14;
+  color: #667;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s;
+}
+.member-icon:hover { border-color: #4a90d9; }
+.member-icon.has-icon { border-style: solid; border-color: #4a90d9; }
+.member-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 @keyframes fadeIn {
@@ -449,3 +484,100 @@ footer {
   transition: background 0.15s;
 }
 .btn-assign:hover { background: #ffd060; }
+
+/* ── アイコン編集モーダル ── */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal.hidden { display: none; }
+.modal-box {
+  background: #16213e;
+  border: 1px solid #2a2a4a;
+  border-radius: 10px;
+  padding: 18px 20px;
+  width: 320px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+.modal-box h3 {
+  font-size: 14px;
+  color: #f0c040;
+  margin: 0 0 12px;
+  text-align: center;
+}
+.icon-stage {
+  display: flex;
+  justify-content: center;
+}
+#icon-canvas {
+  width: 260px;
+  height: 260px;
+  border-radius: 8px;
+  background: #0a0a14;
+  cursor: grab;
+  touch-action: none;
+}
+#icon-canvas:active { cursor: grabbing; }
+.icon-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.btn-file {
+  background: #2a2a4a;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  color: #cce;
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-file:hover { background: #3a3a5a; }
+.zoom-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #aab;
+}
+.zoom-label input[type="range"] { flex: 1; }
+.modal-hint {
+  font-size: 11px;
+  color: #777;
+  margin: 8px 0 0;
+  text-align: center;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.modal-actions button {
+  background: #2a2a4a;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  color: #cce;
+  font-size: 12px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.modal-actions button:hover { background: #3a3a5a; }
+.modal-actions .btn-danger { color: #e88; border-color: #5a2a2a; }
+.modal-actions .btn-danger:hover { background: #5a2020; }
+.modal-actions .primary {
+  background: #f0c040;
+  border: none;
+  color: #1a1a2e;
+  font-weight: 700;
+}
+.modal-actions .primary:hover { background: #ffd060; }

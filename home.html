@@ -108,6 +108,29 @@
     </footer>
   </div>
 
+  <!-- アイコン編集モーダル（画像アップロード→位置/拡大調整→円形トリミング） -->
+  <div id="icon-editor" class="modal hidden">
+    <div class="modal-box">
+      <h3 id="icon-editor-title">アイコン編集</h3>
+      <div class="icon-stage">
+        <canvas id="icon-canvas" width="260" height="260"></canvas>
+      </div>
+      <div class="icon-controls">
+        <button class="btn-file" onclick="document.getElementById('icon-file').click()">画像を選択</button>
+        <input type="file" id="icon-file" accept="image/*" hidden />
+        <label class="zoom-label">拡大
+          <input type="range" id="icon-zoom" min="1" max="6" step="0.01" value="1" />
+        </label>
+      </div>
+      <p class="modal-hint">ドラッグで移動 / スライダーで拡大。円の中がアイコンになります。</p>
+      <div class="modal-actions">
+        <button onclick="cancelIconEditor()">キャンセル</button>
+        <button class="btn-danger" onclick="clearIcon()">アイコン削除</button>
+        <button class="primary" onclick="saveIconEditor()">保存</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/home.js"></script>
 </body>
 </html>

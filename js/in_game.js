@@ -36,22 +36,24 @@ function loadTeams() {
   }
 }
 
-// 保存形式 {name, members:[{name,tag}], color} を {name, members:[名前], color} に正規化
+// 保存形式 {name, members:[{name,tag,icon}], color} を {name, members:[{name,icon}], color} に正規化
 function toSide(team, fallback) {
   if (!team) return fallback;
   return {
     name: team.name || fallback.name,
-    members: (team.members || []).map((m) => (typeof m === 'string' ? m : m.name)),
+    members: (team.members || []).map(
+      (m) => (typeof m === 'string' ? { name: m } : { name: m.name, icon: m.icon })
+    ),
     color: team.color || fallback.color,
   };
 }
 
-// 名前(小文字) -> {side, color} の対応表を作る
+// 名前(小文字) -> {side, color, icon} の対応表を作る
 function buildNameMap() {
   const map = {};
   ['a', 'b'].forEach((side) => {
-    teams[side].members.forEach((name) => {
-      map[name.toLowerCase()] = { side, color: teams[side].color };
+    teams[side].members.forEach((m) => {
+      map[m.name.toLowerCase()] = { side, color: teams[side].color, icon: m.icon };
     });
   });
   return map;
@@ -59,9 +61,9 @@ function buildNameMap() {
 
 // チーム設定の読み込み状況をログに出す（生存数が出ない時の切り分け用）
 function logTeams(when) {
+  const names = (side) => teams[side].members.map((m) => m.name).join(',');
   console.log(`[4v4Wars] チーム設定(${when}): `
-    + `A=${teams.a.name}[${teams.a.members.join(',')}] `
-    + `B=${teams.b.name}[${teams.b.members.join(',')}]`);
+    + `A=${teams.a.name}[${names('a')}] B=${teams.b.name}[${names('b')}]`);
 }
 logTeams('起動時');
 
@@ -130,7 +132,15 @@ function renderMarkers(players) {
     badge.className = 'team-marker';
     badge.style.left = `${BADGE_X}px`;
     badge.style.top = `${p.y + BADGE_DY}px`;
-    badge.style.backgroundColor = info.color || '#fff';  // チーム色
+    if (info.icon) {
+      // アイコンがあればマーカーをアイコンに置換（周囲はチーム色のリング）
+      badge.classList.add('has-icon');
+      badge.style.backgroundImage = `url("${info.icon}")`;
+      badge.style.borderColor = info.color || '#fff';
+    } else {
+      // アイコン未設定は従来どおりチーム色の塗りバッジ
+      badge.style.backgroundColor = info.color || '#fff';
+    }
     container.appendChild(badge);
   });
 }
@@ -148,14 +158,14 @@ function renderTeam(side, byName) {
   // 合計HP: ワーカーが読めているメンバーのHPを合算（未取得はGEP生存に依存しない）
   let totalHp = 0;
   team.members.forEach((m) => {
-    const p = byName[m.toLowerCase()];
+    const p = byName[m.name.toLowerCase()];
     if (p && p.hp != null) totalHp += p.hp;
   });
   // ワーカー未接続時は値を伏せる（チーム名・色は維持）
   hpEl.textContent = workerStats ? totalHp : '--';
 
   // 生存数: メンバーのうちGEPで脱落していない人数
-  const alive = team.members.filter((m) => !deadByName[m.toLowerCase()]).length;
+  const alive = team.members.filter((m) => !deadByName[m.name.toLowerCase()]).length;
   aliveEl.textContent = `${alive}/${team.members.length}`;
   panel.classList.toggle('eliminated', team.members.length > 0 && alive === 0);
 }
