@@ -297,13 +297,6 @@ def main():
     print(f"設定読み込み完了。初期化中{init_interval}秒 / 高速モード{fast_interval}秒間隔。")
     print(f"ウィンドウ: '{WINDOW_NAME}'")
 
-    # EasyOCRのモデル読み込みは重い。初回フレームの待ち時間にならないよう、
-    # TFT待ちの間に先にロードしておく。
-    print("EasyOCRを準備中…（初回のみ時間がかかります）")
-    t0 = time.time()
-    ocr_engine.get_reader()
-    print(f"EasyOCR準備完了（{time.time() - t0:.1f}秒）")
-
     latest = {"stats": {"initialized": False}}
     state = {"last": 0.0, "warned_size": False, "tracker": PlayerTracker(config)}
 
@@ -325,9 +318,17 @@ def main():
               f"テンプレート保持: {len(tracker.templates)}人")
         return config
 
-    # 最新の集計をHTTPで配信し、設定POSTも受け付ける（Overwolfと連携）
+    # 最新の集計をHTTPで配信し、設定POSTも受け付ける（Overwolfと連携）。
+    # ホーム画面からの /config を取りこぼさないよう、重いEasyOCRより先に起動する。
     start_stats_server(http_port, lambda: latest["stats"], on_config)
     print(f"HTTP配信: http://127.0.0.1:{http_port}/stats （POST /config で設定更新）")
+
+    # EasyOCRのモデル読み込みは重い。初回フレームの待ち時間にならないよう、
+    # TFT待ちの間に先にロードしておく（この間も /config は受け付けられる）。
+    print("EasyOCRを準備中…（初回のみ時間がかかります）")
+    t0 = time.time()
+    ocr_engine.get_reader()
+    print(f"EasyOCR準備完了（{time.time() - t0:.1f}秒）")
 
     def process_frame(frame):
         """1フレームを処理して集計・配信する。"""

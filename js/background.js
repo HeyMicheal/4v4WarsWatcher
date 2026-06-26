@@ -58,6 +58,7 @@ function openHomeWindow() {
 
 function openInGameWindow() {
   launchWorker();  // オーバーレイ表示と同時にOCRワーカーを起動
+  pushRoster();    // ホーム画面のロスターをワーカーへ送る（config.jsonより優先させる）
   overwolf.windows.obtainDeclaredWindow('in_game', (result) => {
     if (result.status !== 'success') return;
     inGameWindow = result.window;
@@ -74,6 +75,45 @@ function closeInGameWindow() {
     overwolf.windows.close(inGameWindow.id, () => {});
     inGameWindow = null;
   }
+}
+
+// ── ホーム画面のロスターをワーカーへ送る ──
+// ワーカーは起動時に古い config.json を読むため、ホーム画面の入力（localStorage）を
+// 起動のたびに送り直して上書きさせる。ワーカーのHTTPサーバが立ち上がるまで
+// 数秒かかるので、成功するまでリトライする。
+const TEAMS_KEY = '4v4wars_teams';
+const WORKER_CONFIG_URL = 'http://127.0.0.1:17653/config';
+
+function rosterNames() {
+  try {
+    const data = JSON.parse(localStorage.getItem(TEAMS_KEY));
+    const names = [];
+    ['teamA', 'teamB'].forEach((k) => {
+      (data?.[k]?.members || []).forEach((m) => {
+        const n = typeof m === 'string' ? m : m.name;
+        if (n) names.push(n);
+      });
+    });
+    return names;
+  } catch (e) {
+    return [];
+  }
+}
+
+function pushRoster(attempt = 0) {
+  const names = rosterNames();
+  if (!names.length) return;  // 未設定なら送らない（config.jsonのまま）
+  fetch(WORKER_CONFIG_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ names }),
+  }).then((r) => {
+    if (!r.ok) throw new Error('status ' + r.status);
+    console.log('[4v4Wars] ロスターをワーカーへ送信:', JSON.stringify(names));
+  }).catch(() => {
+    // ワーカー起動直後はまだHTTPサーバが立っていない。最大40秒リトライ
+    if (attempt < 20) setTimeout(() => pushRoster(attempt + 1), 2000);
+  });
 }
 
 // ── OCRワーカーの起動/停止（C#プラグイン経由） ──
