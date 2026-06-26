@@ -98,7 +98,7 @@ body {
   opacity: 0.45;
 }
 
-/* ── プレイヤーリスト上のチーム色マーカー ── */
+/* ── プレイヤーリストのキャラ肖像を囲むチーム色リング ── */
 #markers {
   position: absolute;
   top: 0;
@@ -107,10 +107,15 @@ body {
 
 .team-marker {
   position: absolute;
-  width: 18px;
-  height: 18px;
-  margin-top: -9px;   /* top をy中心に合わせる */
+  width: 58px;
+  height: 58px;
+  margin-left: -29px;  /* left を肖像中心(PORTRAIT_X)に合わせる */
+  margin-top: -29px;   /* top をy中心に合わせる */
+  border: 3px solid #fff;        /* 色は borderColor をJSで上書き */
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
+  box-sizing: border-box;
+  background: transparent;        /* 中央は肖像を見せる */
+  /* 肖像/ゲーム既存リングと区別するため、外と内に薄い暗縁をつける */
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
 }
