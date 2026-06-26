@@ -201,6 +201,19 @@ class PlayerTracker:
                 c.manual_name = name if name else None
                 return
 
+    def reset_ocr(self):
+        """手動指定していないクラスタのOCR状態を初期化し、EasyOCRをやり直させる。
+        スクショのタイミング不良で名前が読めなかった時のリカバリ用。手動指定は保持。"""
+        n = 0
+        for c in self.clusters:
+            if not c.manual_name:
+                c.ocr_tries = 0
+                c.guess_cand = None
+                c.guess_score = 0.0
+                c.ocr_name = None
+                n += 1
+        return n
+
     def needs_slow(self):
         """OCR下書きを試している間は遅いモード（EasyOCRが重いため）。"""
         if not self.clusters:
@@ -376,7 +389,12 @@ def main():
 
     latest = {"stats": {"players": []}, "rows": []}
     state = {"last": 0.0, "warned_size": False, "tracker": PlayerTracker(config),
-             "pending_assign": {}}
+             "pending_assign": {}, "pending_reocr": False}
+
+    def on_reocr(payload=None):
+        """ホーム画面の「OCR再実行」。次の更新でOCR状態を初期化する。"""
+        state["pending_reocr"] = True
+        print("OCR再実行の要求を受信")
 
     def on_assign(payload):
         """ホーム画面で手動指定された {行ID: 名前} を、次の更新で反映するため貯める。
@@ -411,7 +429,7 @@ def main():
     # ホーム画面からの /config を取りこぼさないよう、重いEasyOCRより先に起動する。
     start_stats_server(
         http_port, lambda: latest["stats"], on_config,
-        get_rows=lambda: latest["rows"], on_assign=on_assign,
+        get_rows=lambda: latest["rows"], on_assign=on_assign, on_reocr=on_reocr,
     )
     print(f"HTTP配信: http://127.0.0.1:{http_port}/stats "
           f"（/config 設定, /rows 行画像, /assign 手動対応）")
@@ -439,6 +457,12 @@ def main():
             for cid, name in state["pending_assign"].items():
                 tracker.set_manual(cid, name)
             state["pending_assign"] = {}
+
+        # ホーム画面からの「OCR再実行」を反映する
+        if state["pending_reocr"]:
+            n = tracker.reset_ocr()
+            state["pending_reocr"] = False
+            print(f"OCRを再実行します（対象 {n}クラスタ）")
 
         img = frame_to_image(frame)
         if img.size != EXPECTED_SIZE and not state["warned_size"]:
@@ -516,6 +540,7 @@ def main():
             state.pop("saved_frame", None)
             state["tracker"] = PlayerTracker(config)
             state["pending_assign"] = {}
+            state["pending_reocr"] = False
             try:
                 run_session()
             except KeyboardInterrupt:

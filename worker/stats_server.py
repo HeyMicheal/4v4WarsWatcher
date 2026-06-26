@@ -5,6 +5,7 @@
   GET  /rows    … 各行の名前画像とOCR下書きを返す（ホームの手動対応用）
   POST /config  … ホーム画面から送られたチーム設定を反映する
   POST /assign  … ホーム画面で手動指定した「行ID→プレイヤー名」を反映する
+  POST /reocr   … OCRをやり直す（スクショのタイミング不良のリカバリ）
 
 最新の集計はメモリ上の値を返す（ファイル読み込みの競合を避ける）。
 """
@@ -14,13 +15,15 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
-def start_stats_server(port, get_stats, on_config=None, get_rows=None, on_assign=None):
+def start_stats_server(port, get_stats, on_config=None, get_rows=None, on_assign=None,
+                       on_reocr=None):
     """
     バックグラウンドでHTTPサーバーを起動する。
     get_stats:  最新の集計dictを返す呼び出し可能オブジェクト。
     on_config:  POST /config で受け取った設定dictを処理する関数（任意）。
     get_rows:   GET /rows で返す行データ(list)を返す呼び出し可能オブジェクト（任意）。
     on_assign:  POST /assign で受け取った手動対応dictを処理する関数（任意）。
+    on_reocr:   POST /reocr でOCR再実行を要求された時に呼ぶ関数（任意）。
     戻り値: ThreadingHTTPServer（停止したい場合は shutdown() を呼ぶ）。
     """
 
@@ -62,6 +65,8 @@ def start_stats_server(port, get_stats, on_config=None, get_rows=None, on_assign
                 handler = on_config
             elif path == "/assign":
                 handler = on_assign
+            elif path == "/reocr":
+                handler = on_reocr
             else:
                 self._send(404, b'{"error":"not found"}')
                 return

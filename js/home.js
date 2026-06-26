@@ -22,6 +22,7 @@ const WORKER_BASE = 'http://127.0.0.1:17653';
 const WORKER_CONFIG_URL = `${WORKER_BASE}/config`;
 const WORKER_ROWS_URL = `${WORKER_BASE}/rows`;
 const WORKER_ASSIGN_URL = `${WORKER_BASE}/assign`;
+const WORKER_REOCR_URL = `${WORKER_BASE}/reocr`;
 
 // ワーカー起動設定（フォルダ・Pythonコマンド）の保存キー
 const WORKER_SETTINGS_KEY = '4v4wars_worker';
@@ -92,6 +93,27 @@ async function refreshRows() {
     assignRows = await res.json();
     renderRows();
     msg.textContent = assignRows.length ? '' : 'まだ行がありません（試合中に「更新」してください）';
+  } catch (e) {
+    msg.textContent = 'ワーカーに接続できません（起動しているか確認してください）';
+  }
+}
+
+// OCRをやり直す（スクショのタイミング不良で名前が読めなかった時のリカバリ）
+async function rerunOcr() {
+  const msg = document.getElementById('assign-msg');
+  msg.textContent = 'OCRを再実行中…（数秒かかります）';
+  try {
+    await fetch(WORKER_REOCR_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    // 再OCRに数秒かかるので、少し待ってから行を取り直す
+    setTimeout(() => {
+      refreshRows();
+      msg.textContent = 'OCRを再実行しました';
+      setTimeout(() => { msg.textContent = ''; }, 2000);
+    }, 3000);
   } catch (e) {
     msg.textContent = 'ワーカーに接続できません（起動しているか確認してください）';
   }

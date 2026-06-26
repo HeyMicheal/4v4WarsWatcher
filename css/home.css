@@ -411,6 +411,11 @@ footer {
   color: #777;
   margin: 3px 0 0;
 }
+.assign-head-btns {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+}
 .btn-refresh {
   flex-shrink: 0;
   background: #2a2a4a;
