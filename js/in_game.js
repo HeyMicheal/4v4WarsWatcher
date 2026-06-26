@@ -113,9 +113,10 @@ function render() {
 }
 
 // TFTプレイヤーリストの各キャラ肖像を、チーム色のリングで囲む。
-// 肖像は右端の丸いアイコン（中心X≈1882, 1920x1080固定）。HP数字は
-// その左にあるので、肖像にぴったり合わせたリングなら数字を隠さない。
-const PORTRAIT_X = 1882;
+// 肖像は右端の丸いアイコン（中心 X≈1877, Y≈行中心-2, 1920x1080固定）。
+// 外枠まで囲む大きめの環にし、左側(HP側)に切れ目を開けてHPを隠さない。
+const PORTRAIT_X = 1877;
+const PORTRAIT_DY = -2;  // 行中心に対する肖像中心の縦オフセット
 
 function renderMarkers(players) {
   const container = document.getElementById('markers');
@@ -128,7 +129,7 @@ function renderMarkers(players) {
     const ring = document.createElement('div');
     ring.className = 'team-marker';
     ring.style.left = `${PORTRAIT_X}px`;
-    ring.style.top = `${p.y}px`;
+    ring.style.top = `${p.y + PORTRAIT_DY}px`;
     ring.style.setProperty('--mc', info.color || '#fff');  // チーム色（CSSのリング色）
     container.appendChild(ring);
   });

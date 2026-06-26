@@ -113,10 +113,10 @@ body {
  */
 .team-marker {
   position: absolute;
-  width: 60px;
-  height: 60px;
-  margin-left: -30px;  /* left を肖像中心(PORTRAIT_X)に合わせる */
-  margin-top: -30px;   /* top をy中心に合わせる */
+  width: 76px;
+  height: 76px;
+  margin-left: -38px;  /* left を肖像中心(PORTRAIT_X)に合わせる */
+  margin-top: -38px;   /* top を肖像中心に合わせる */
   border-radius: 50%;
   /* 色の弧。0°=上から時計回り、270°=左。左に約74°の切れ目を開ける */
   background: conic-gradient(
@@ -125,9 +125,9 @@ body {
     transparent 233deg 307deg,
     var(--mc, #fff) 307deg 360deg
   );
-  /* 半径24〜28pxだけ残して中空の輪にする（肖像にぴったり） */
-  -webkit-mask: radial-gradient(circle, transparent 0 23px, #000 24px 28px, transparent 29px);
-          mask: radial-gradient(circle, transparent 0 23px, #000 24px 28px, transparent 29px);
+  /* 半径32〜36pxだけ残して中空の輪にする（肖像の外枠を囲む） */
+  -webkit-mask: radial-gradient(circle, transparent 0 31px, #000 32px 36px, transparent 37px);
+          mask: radial-gradient(circle, transparent 0 31px, #000 32px 36px, transparent 37px);
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));  /* 暗い縁で肖像と分離 */
   pointer-events: none;
 }
