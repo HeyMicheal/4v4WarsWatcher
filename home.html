@@ -13,6 +13,7 @@
       <span class="title-text">4v4 Wars Watcher</span>
     </div>
     <div id="title-bar-controls">
+      <button id="btn-settings" onclick="openSettings()" title="ワーカー設定">&#x2699;</button>
       <button id="btn-minimize" onclick="minimizeWindow()" title="最小化">&#x2012;</button>
       <button id="btn-close" onclick="closeWindow()" title="閉じる">&#x2715;</button>
     </div>
@@ -31,6 +32,7 @@
         <div class="team-card" id="team-a-card">
           <div class="team-header team-a">
             <input type="color" class="team-color-input" id="team-a-color" value="#4a90d9" title="チームカラー" />
+            <button class="team-icon" id="team-a-icon-btn" onclick="openIconEditor('a')" title="チームアイコン">＋</button>
             <textarea class="team-name-input" id="team-a-name" rows="1" spellcheck="false">Team A</textarea>
             <button class="btn-reset" onclick="resetTeam('a')" title="Team Aをリセット">リセット</button>
           </div>
@@ -51,6 +53,7 @@
         <div class="team-card" id="team-b-card">
           <div class="team-header team-b">
             <input type="color" class="team-color-input" id="team-b-color" value="#d9604a" title="チームカラー" />
+            <button class="team-icon" id="team-b-icon-btn" onclick="openIconEditor('b')" title="チームアイコン">＋</button>
             <textarea class="team-name-input" id="team-b-name" rows="1" spellcheck="false">Team B</textarea>
             <button class="btn-reset" onclick="resetTeam('b')" title="Team Bをリセット">リセット</button>
           </div>
@@ -70,24 +73,6 @@
       </div>
     </main>
 
-    <section class="worker-settings">
-      <div class="worker-row">
-        <label for="worker-dir">ワーカーフォルダ</label>
-        <input type="text" id="worker-dir" spellcheck="false"
-               placeholder="例: D:\projects\4v4WarsWatcher\worker" />
-      </div>
-      <div class="worker-row">
-        <label for="worker-python">Python（任意）</label>
-        <input type="text" id="worker-python" spellcheck="false" placeholder="pythonw" />
-      </div>
-      <div class="worker-row">
-        <label for="worker-tesseract">Tesseract（任意）</label>
-        <input type="text" id="worker-tesseract" spellcheck="false"
-               placeholder="例: D:\Tesseract-OCR\tesseract.exe（PATHにあれば空でOK）" />
-      </div>
-      <p class="worker-hint">オーバーレイ起動時にこのフォルダの worker.py を自動実行します。</p>
-    </section>
-
     <section class="assign-panel">
       <div class="assign-head">
         <div>
@@ -106,6 +91,31 @@
     <footer>
       <span id="status-msg"></span>
     </footer>
+  </div>
+
+  <!-- ワーカー設定モーダル（歯車ボタンから開く） -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-box settings-box">
+      <h3>ワーカー設定</h3>
+      <div class="worker-row">
+        <label for="worker-dir">ワーカーフォルダ</label>
+        <input type="text" id="worker-dir" spellcheck="false"
+               placeholder="例: D:\projects\4v4WarsWatcher\worker" />
+      </div>
+      <div class="worker-row">
+        <label for="worker-python">Python（任意）</label>
+        <input type="text" id="worker-python" spellcheck="false" placeholder="pythonw" />
+      </div>
+      <div class="worker-row">
+        <label for="worker-tesseract">Tesseract（任意）</label>
+        <input type="text" id="worker-tesseract" spellcheck="false"
+               placeholder="例: D:\Tesseract-OCR\tesseract.exe（PATHにあれば空でOK）" />
+      </div>
+      <p class="worker-hint">オーバーレイ起動時にこのフォルダの worker.py を自動実行します。設定は自動保存されます。</p>
+      <div class="modal-actions">
+        <button class="primary" onclick="closeSettings()">閉じる</button>
+      </div>
+    </div>
   </div>
 
   <!-- アイコン編集モーダル（画像アップロード→位置/拡大調整→円形トリミング） -->

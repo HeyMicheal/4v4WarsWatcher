@@ -6,6 +6,9 @@ const state = {
   b: [],
 };
 
+// チームごとのアイコン（dataURL）。チーム単位の設定。
+const teamIcon = { a: null, b: null };
+
 function getVal(id) {
   return document.getElementById(id).value.replace(/\n/g, '').trim();
 }
@@ -47,8 +50,8 @@ function loadWorkerSettings() {
 
 function persist() {
   const data = {
-    teamA: { name: getVal('team-a-name') || 'Team A', members: state.a, color: getColor('a') },
-    teamB: { name: getVal('team-b-name') || 'Team B', members: state.b, color: getColor('b') },
+    teamA: { name: getVal('team-a-name') || 'Team A', members: state.a, color: getColor('a'), icon: teamIcon.a },
+    teamB: { name: getVal('team-b-name') || 'Team B', members: state.b, color: getColor('b'), icon: teamIcon.b },
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   sendToWorker(data);
@@ -180,14 +183,18 @@ function load() {
       setVal('team-a-name', data.teamA.name || 'Team A');
       state.a = data.teamA.members || [];
       if (data.teamA.color) document.getElementById('team-a-color').value = data.teamA.color;
+      teamIcon.a = data.teamA.icon || null;
     }
     if (data.teamB) {
       setVal('team-b-name', data.teamB.name || 'Team B');
       state.b = data.teamB.members || [];
       if (data.teamB.color) document.getElementById('team-b-color').value = data.teamB.color;
+      teamIcon.b = data.teamB.icon || null;
     }
     renderMembers('a');
     renderMembers('b');
+    updateTeamIconBtn('a');
+    updateTeamIconBtn('b');
   } catch (e) {
     // 壊れたデータは無視
   }
@@ -248,10 +255,7 @@ function renderMembers(team) {
   state[team].forEach((member, i) => {
     const li = document.createElement('li');
     li.className = 'member-item';
-    const iconInner = member.icon ? `<img src="${member.icon}" alt="" />` : '＋';
     li.innerHTML = `
-      <button class="member-icon${member.icon ? ' has-icon' : ''}"
-              onclick="openIconEditor('${team}', ${i})" title="アイコンを編集">${iconInner}</button>
       <span class="member-label">
         <span class="member-name">${escapeHtml(member.name)}</span>
         <span class="member-tag">#${escapeHtml(member.tag)}</span>
@@ -275,23 +279,34 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// ── アイコン編集（アップロード→移動/拡大→円形トリミング） ──
+// ── チームアイコン編集（アップロード→移動/拡大→円形トリミング） ──
 const ICON_E = 260;   // 編集キャンバスの一辺(px)
 const ICON_O = 160;   // 出力アイコンの一辺(px)
 // img=元画像, scale=描画倍率, base=カバー配置の基準倍率, dx/dy=元画像左上の位置
-const iconState = { team: null, index: null, img: null, scale: 1, base: 1, dx: 0, dy: 0, drag: null };
+const iconState = { team: null, img: null, scale: 1, base: 1, dx: 0, dy: 0, drag: null };
 
-function openIconEditor(team, index) {
+// チームアイコンボタンの見た目を更新する
+function updateTeamIconBtn(team) {
+  const btn = document.getElementById(`team-${team}-icon-btn`);
+  if (!btn) return;
+  if (teamIcon[team]) {
+    btn.classList.add('has-icon');
+    btn.innerHTML = `<img src="${teamIcon[team]}" alt="" />`;
+  } else {
+    btn.classList.remove('has-icon');
+    btn.textContent = '＋';
+  }
+}
+
+function openIconEditor(team) {
   iconState.team = team;
-  iconState.index = index;
   iconState.img = null;
   iconState.drag = null;
-  document.getElementById('icon-editor-title').textContent =
-    `アイコン編集 — ${state[team][index] ? state[team][index].name : ''}`;
+  const teamName = getVal(`team-${team}-name`) || `Team ${team.toUpperCase()}`;
+  document.getElementById('icon-editor-title').textContent = `チームアイコン — ${teamName}`;
   document.getElementById('icon-editor').classList.remove('hidden');
-  const cur = state[team][index] && state[team][index].icon;
-  if (cur) loadIconImage(cur);  // 既存アイコンを下地に表示
-  else drawIcon();              // 空（円枠だけ）
+  if (teamIcon[team]) loadIconImage(teamIcon[team]);  // 既存アイコンを下地に表示
+  else drawIcon();                                    // 空（円枠だけ）
 }
 
 function loadIconImage(src) {
@@ -376,7 +391,7 @@ function iconDragMove(e) {
 function iconDragEnd() { iconState.drag = null; }
 
 function saveIconEditor() {
-  const { team, index, img } = iconState;
+  const { team, img } = iconState;
   if (!img) { cancelIconEditor(); return; }
   // 出力用キャンバスに、編集ビューと同じ配置を円形クリップで描く
   const out = document.createElement('canvas');
@@ -388,20 +403,28 @@ function saveIconEditor() {
   octx.clip();
   octx.drawImage(img, iconState.dx * f, iconState.dy * f,
     img.width * iconState.scale * f, img.height * iconState.scale * f);
-  state[team][index].icon = out.toDataURL('image/png');
+  teamIcon[team] = out.toDataURL('image/png');
+  updateTeamIconBtn(team);
   persist();
-  renderMembers(team);
   cancelIconEditor();
 }
 
 function clearIcon() {
-  const { team, index } = iconState;
-  if (team != null && state[team] && state[team][index]) {
-    delete state[team][index].icon;
+  const { team } = iconState;
+  if (team) {
+    teamIcon[team] = null;
+    updateTeamIconBtn(team);
     persist();
-    renderMembers(team);
   }
   cancelIconEditor();
+}
+
+// ── ワーカー設定モーダル（歯車ボタン） ──
+function openSettings() {
+  document.getElementById('settings-modal').classList.remove('hidden');
+}
+function closeSettings() {
+  document.getElementById('settings-modal').classList.add('hidden');
 }
 
 function cancelIconEditor() {

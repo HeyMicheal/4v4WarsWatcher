@@ -68,6 +68,14 @@ body {
   transition: background 0.15s, color 0.15s;
 }
 
+#btn-settings {
+  font-size: 16px;
+}
+#btn-settings:hover {
+  background: #2a2a4a;
+  color: #e0e0e0;
+}
+
 #btn-minimize:hover {
   background: #2a2a4a;
   color: #e0e0e0;
@@ -83,8 +91,7 @@ body {
   flex-direction: column;
   flex: 1;
   padding: 20px 28px 16px;
-  overflow-y: auto;     /* 下のパネルが増えてもスクロールで見られる */
-  overflow-x: hidden;
+  overflow: hidden;     /* ホームはスクロールさせない（ウィンドウ高で収める） */
   user-select: none;
 }
 
@@ -117,8 +124,8 @@ header .subtitle {
 
 /* チームカード */
 main {
-  flex: 0 0 auto;   /* 固定高さにして、下のパネルはその下にスクロールで並べる */
-  height: 300px;
+  flex: 1;          /* 余った高さを埋める（下のパネルは固定高） */
+  min-height: 240px;
   overflow: hidden;
 }
 
@@ -148,10 +155,6 @@ main {
 
 .team-header.team-a { background: #1e2d4a; }
 .team-header.team-b { background: #2d1e3a; }
-
-.team-icon {
-  font-size: 18px;
-}
 
 .team-color-input {
   width: 26px;
@@ -218,15 +221,15 @@ main {
   white-space: nowrap;
 }
 
-/* メンバーのアイコン（クリックで編集モーダルを開く） */
-.member-icon {
+/* チームアイコン（チームヘッダー。クリックで編集モーダルを開く） */
+.team-icon {
   flex-shrink: 0;
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  border: 1px dashed #3a3a5a;
-  background: #0a0a14;
-  color: #667;
+  border: 1px dashed #555;
+  background: rgba(0, 0, 0, 0.25);
+  color: #cce;
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
@@ -237,9 +240,9 @@ main {
   justify-content: center;
   transition: border-color 0.15s;
 }
-.member-icon:hover { border-color: #4a90d9; }
-.member-icon.has-icon { border-style: solid; border-color: #4a90d9; }
-.member-icon img {
+.team-icon:hover { border-color: #fff; }
+.team-icon.has-icon { border-style: solid; border-color: rgba(255, 255, 255, 0.7); }
+.team-icon img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -426,7 +429,7 @@ footer {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 260px;
+  max-height: 190px;
   overflow-y: auto;
 }
 .assign-row {
@@ -510,6 +513,7 @@ footer {
   margin: 0 0 12px;
   text-align: center;
 }
+.settings-box { width: 440px; }
 .icon-stage {
   display: flex;
   justify-content: center;

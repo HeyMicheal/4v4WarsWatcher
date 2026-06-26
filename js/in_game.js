@@ -21,8 +21,8 @@ let teams = loadTeams();    // {a:{name,members[],color}, b:{...}}
 // ── ホーム画面のチーム設定を読み込む ──
 function loadTeams() {
   const def = {
-    a: { name: 'Team A', members: [], color: '#4a90d9' },
-    b: { name: 'Team B', members: [], color: '#d9604a' },
+    a: { name: 'Team A', members: [], color: '#4a90d9', icon: null },
+    b: { name: 'Team B', members: [], color: '#d9604a', icon: null },
   };
   try {
     const data = JSON.parse(localStorage.getItem(TEAMS_KEY));
@@ -36,24 +36,24 @@ function loadTeams() {
   }
 }
 
-// 保存形式 {name, members:[{name,tag,icon}], color} を {name, members:[{name,icon}], color} に正規化
+// 保存形式 {name, members:[{name,tag}], color, icon} を {name, members:[{name}], color, icon} に正規化
+// アイコンはチーム単位（メンバーごとではない）
 function toSide(team, fallback) {
   if (!team) return fallback;
   return {
     name: team.name || fallback.name,
-    members: (team.members || []).map(
-      (m) => (typeof m === 'string' ? { name: m } : { name: m.name, icon: m.icon })
-    ),
+    members: (team.members || []).map((m) => (typeof m === 'string' ? { name: m } : { name: m.name })),
     color: team.color || fallback.color,
+    icon: team.icon || null,
   };
 }
 
-// 名前(小文字) -> {side, color, icon} の対応表を作る
+// 名前(小文字) -> {side, color, icon} の対応表を作る（アイコンはチームのもの）
 function buildNameMap() {
   const map = {};
   ['a', 'b'].forEach((side) => {
     teams[side].members.forEach((m) => {
-      map[m.name.toLowerCase()] = { side, color: teams[side].color, icon: m.icon };
+      map[m.name.toLowerCase()] = { side, color: teams[side].color, icon: teams[side].icon };
     });
   });
   return map;
