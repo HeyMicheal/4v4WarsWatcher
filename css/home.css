@@ -531,6 +531,15 @@ footer {
   text-align: center;
 }
 .settings-box { width: 440px; }
+.slots-box { width: 440px; }
+.slot-index {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f0c040;
+}
 .icon-stage {
   display: flex;
   justify-content: center;

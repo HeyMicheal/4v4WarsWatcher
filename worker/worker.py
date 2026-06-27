@@ -224,6 +224,56 @@ class PlayerTracker:
             n += 1
         return n
 
+    def register_slot(self, mask, crop, y, name):
+        """指定位置のキャプチャ画像を、その名前のテンプレートとして登録/変更する（手動）。
+        - 同名の既存クラスタがあればテンプレを差し替え（変更）
+        - 無ければ画像が近い既存を再利用、それも無ければ新規追加
+        OCRに頼らず、人が見た画像をそのままテンプレートにできる。"""
+        target = next((c for c in self.clusters
+                       if name in (c.manual_name, c.ocr_name)), None)
+        if target is None:
+            best, best_sim = None, 0.0
+            for c in self.clusters:
+                s = ocr_engine.ncc(mask, c.template)
+                if s > best_sim:
+                    best, best_sim = c, s
+            if best is not None and best_sim >= CONFIDENT_NCC:
+                target = best
+            else:
+                target = Cluster(self.next_id, mask, crop)
+                self.next_id += 1
+                self.clusters.append(target)
+        # 名前の重複を防ぐ（他クラスタから同名を外す）
+        for c in self.clusters:
+            if c is not target:
+                if c.manual_name == name:
+                    c.manual_name = None
+                if c.ocr_name == name:
+                    c.ocr_name = None
+        target.template = mask
+        target.crop = crop
+        target.last_y = y
+        target.manual_name = name
+        target.ocr_name = None
+        target.ocr_tries = MAX_OCR_TRIES   # 以後OCR不要
+        target.guess_cand = None
+        target.guess_score = 0.0
+        return target
+
+    def slots_payload(self, img):
+        """画面の各行（上から）の現在の名前画像を返す（位置からの手動登録用）。"""
+        out = []
+        for i, cy in enumerate(ocr_engine.ROW_CENTERS):
+            m = ocr_engine.name_mask(img, cy)
+            if ocr_engine.mask_is_empty(m):
+                continue
+            out.append({
+                "slot": i,             # ROW_CENTERS のインデックス
+                "top": len(out) + 1,   # 上から数えた順位（空行を除く）
+                "image": _png_b64(self._crop_disp(img, i)),
+            })
+        return out
+
     def needs_slow(self):
         """OCR下書きを試している間は遅いモード（EasyOCRが重いため）。"""
         if not self.clusters:
@@ -403,9 +453,21 @@ def main():
     print(f"設定読み込み完了。初期化中{init_interval}秒 / 高速モード{fast_interval}秒間隔。")
     print(f"ウィンドウ: '{WINDOW_NAME}'")
 
-    latest = {"stats": {"players": []}, "rows": []}
+    latest = {"stats": {"players": []}, "rows": [], "slots": []}
     state = {"last": 0.0, "warned_size": False, "tracker": PlayerTracker(config),
-             "pending_assign": {}, "pending_reocr": False, "pending_reocr_ids": None}
+             "pending_assign": {}, "pending_reocr": False, "pending_reocr_ids": None,
+             "pending_register": [], "slots_t": 0.0}
+
+    def on_register(payload):
+        """ホーム画面の「位置から登録」。{slot, name} を次の更新で反映する。"""
+        try:
+            slot = int(payload["slot"])
+        except (KeyError, ValueError, TypeError):
+            return
+        name = payload.get("name") or None
+        if name:
+            state["pending_register"].append((slot, name))
+            print(f"位置からの登録を受信: 行{slot} → {name}")
 
     def on_reocr(payload=None):
         """ホーム画面の「OCR再実行」。次の更新でOCR状態を初期化する。
@@ -449,6 +511,7 @@ def main():
     start_stats_server(
         http_port, lambda: latest["stats"], on_config,
         get_rows=lambda: latest["rows"], on_assign=on_assign, on_reocr=on_reocr,
+        get_slots=lambda: latest["slots"], on_register=on_register,
     )
     print(f"HTTP配信: http://127.0.0.1:{http_port}/stats "
           f"（/config 設定, /rows 行画像, /assign 手動対応）")
@@ -489,6 +552,16 @@ def main():
             print(f"警告: 解像度が {img.size} です（{EXPECTED_SIZE}前提）。座標がずれる可能性。")
             state["warned_size"] = True
 
+        # ホーム画面からの「位置から登録」を、この瞬間のフレームで反映する
+        if state["pending_register"]:
+            for slot, name in state["pending_register"]:
+                cy = ocr_engine.ROW_CENTERS[slot]
+                mask = ocr_engine.name_mask(img, cy)
+                crop = tracker._crop_disp(img, slot)
+                tracker.register_slot(mask, crop, cy, name)
+                print(f"位置から登録: 行{slot}(上から) → {name}")
+            state["pending_register"] = []
+
         # デバッグモード（set DEBUG=1）: 最初のフレームを保存し、割り当てを表示
         if DEBUG and not state.get("saved_frame"):
             dbg_path = os.path.join(HERE, "debug_frame.png")
@@ -519,6 +592,10 @@ def main():
         # HTTP配信用に最新の集計と行画像を更新し、集計はファイルにも残す
         latest["stats"] = stats
         latest["rows"] = tracker.rows_payload()
+        # 位置一覧（手動登録用）は重いので1秒に1回だけ更新する
+        if now - state["slots_t"] >= 1.0:
+            latest["slots"] = tracker.slots_payload(img)
+            state["slots_t"] = now
         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
             json.dump(stats, f, ensure_ascii=False, indent=2)
 
@@ -562,6 +639,7 @@ def main():
             state["pending_assign"] = {}
             state["pending_reocr"] = False
             state["pending_reocr_ids"] = None
+            state["pending_register"] = []
             try:
                 run_session()
             except KeyboardInterrupt:

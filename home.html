@@ -80,6 +80,7 @@
           <p class="assign-hint">各行の名前画像を見て、正しいプレイヤーを選んで「確定」してください。OCRが読めた行は自動で選択済みです。読めていない行は各行の「再OCR」で読み直せます。</p>
         </div>
         <div class="assign-head-btns">
+          <button class="btn-refresh" id="assign-register" onclick="openSlots()" title="上から数えた位置のキャプチャを見て、手動で名前を登録します">位置から登録</button>
           <button class="btn-refresh" id="assign-reocr" onclick="rerunOcr()" title="名前が読めていない行をまとめて読み直します（正しく読めている行は触りません）">未読を一括OCR</button>
           <button class="btn-refresh" id="assign-refresh" onclick="refreshRows()">更新</button>
         </div>
@@ -94,6 +95,20 @@
     <footer>
       <span id="status-msg"></span>
     </footer>
+  </div>
+
+  <!-- 位置から登録モーダル（上から数えた行のキャプチャを手動でテンプレ登録） -->
+  <div id="slots-modal" class="modal hidden">
+    <div class="modal-box slots-box">
+      <h3>位置から手動登録</h3>
+      <p class="modal-hint">上から数えた各行の名前画像を見て、プレイヤーを選んで「登録」。その画像がテンプレートになります（OCR不要）。</p>
+      <div id="slots-list" class="assign-rows"></div>
+      <div class="modal-actions">
+        <span id="slots-msg"></span>
+        <button onclick="refreshSlots()">再取得</button>
+        <button class="primary" onclick="closeSlots()">閉じる</button>
+      </div>
+    </div>
   </div>
 
   <!-- ワーカー設定モーダル（歯車ボタンから開く） -->

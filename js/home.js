@@ -23,6 +23,8 @@ const WORKER_CONFIG_URL = `${WORKER_BASE}/config`;
 const WORKER_ROWS_URL = `${WORKER_BASE}/rows`;
 const WORKER_ASSIGN_URL = `${WORKER_BASE}/assign`;
 const WORKER_REOCR_URL = `${WORKER_BASE}/reocr`;
+const WORKER_SLOTS_URL = `${WORKER_BASE}/slots`;
+const WORKER_REGISTER_URL = `${WORKER_BASE}/register`;
 
 // ワーカー起動設定（フォルダ・Pythonコマンド）の保存キー
 const WORKER_SETTINGS_KEY = '4v4wars_worker';
@@ -123,6 +125,90 @@ async function rerunOcr(ids) {
 // その行（位置）だけOCRを読み直す
 function rerunOcrRow(id) {
   rerunOcr([id]);
+}
+
+// ── 位置から手動登録（上から数えた行のキャプチャをテンプレートにする） ──
+let slotRows = [];
+
+function openSlots() {
+  document.getElementById('slots-modal').classList.remove('hidden');
+  refreshSlots();
+}
+function closeSlots() {
+  document.getElementById('slots-modal').classList.add('hidden');
+}
+
+async function refreshSlots() {
+  const msg = document.getElementById('slots-msg');
+  msg.textContent = '取得中…';
+  try {
+    const res = await fetch(WORKER_SLOTS_URL, { cache: 'no-store' });
+    slotRows = await res.json();
+    renderSlots();
+    msg.textContent = slotRows.length ? '' : '行が見つかりません（試合中に開いてください）';
+  } catch (e) {
+    msg.textContent = 'ワーカーに接続できません';
+  }
+}
+
+function renderSlots() {
+  const container = document.getElementById('slots-list');
+  container.innerHTML = '';
+  const names = allMemberNames();
+  slotRows.forEach((r) => {
+    const row = document.createElement('div');
+    row.className = 'assign-row';
+
+    const idx = document.createElement('span');
+    idx.className = 'slot-index';
+    idx.textContent = `${r.top}`;  // 上から数えた順位
+
+    const img = document.createElement('img');
+    img.className = 'assign-img';
+    if (r.image) img.src = r.image;
+
+    const sel = document.createElement('select');
+    sel.className = 'assign-select';
+    names.forEach((n) => {
+      const o = document.createElement('option');
+      o.value = n;
+      o.textContent = n;
+      sel.appendChild(o);
+    });
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '（選択）';
+    sel.insertBefore(none, sel.firstChild);
+    sel.value = '';
+
+    const btn = document.createElement('button');
+    btn.className = 'assign-row-reocr';
+    btn.textContent = '登録';
+    btn.onclick = () => registerSlot(r.slot, sel.value);
+
+    row.appendChild(idx);
+    row.appendChild(img);
+    row.appendChild(sel);
+    row.appendChild(btn);
+    container.appendChild(row);
+  });
+}
+
+// 指定位置のキャプチャを、選んだ名前のテンプレートとして登録する
+async function registerSlot(slot, name) {
+  const msg = document.getElementById('slots-msg');
+  if (!name) { msg.textContent = '名前を選んでください'; return; }
+  try {
+    await fetch(WORKER_REGISTER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot, name }),
+    });
+    msg.textContent = `「${name}」を登録しました`;
+    setTimeout(() => { msg.textContent = ''; }, 2000);
+  } catch (e) {
+    msg.textContent = '送信に失敗しました（ワーカー未起動？）';
+  }
 }
 
 function renderRows() {

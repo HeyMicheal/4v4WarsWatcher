@@ -3,9 +3,11 @@
 
   GET  /stats   … 最新の集計をJSONで返す（Overwolfオーバーレイが表示に使う）
   GET  /rows    … 各行の名前画像とOCR下書きを返す（ホームの手動対応用）
+  GET  /slots   … 画面の各行（上から）の現在の名前画像を返す（位置からの登録用）
   POST /config  … ホーム画面から送られたチーム設定を反映する
   POST /assign  … ホーム画面で手動指定した「行ID→プレイヤー名」を反映する
   POST /reocr   … OCRをやり直す（スクショのタイミング不良のリカバリ）
+  POST /register… 指定位置のキャプチャを名前のテンプレートとして登録/変更する
 
 最新の集計はメモリ上の値を返す（ファイル読み込みの競合を避ける）。
 """
@@ -16,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 def start_stats_server(port, get_stats, on_config=None, get_rows=None, on_assign=None,
-                       on_reocr=None):
+                       on_reocr=None, get_slots=None, on_register=None):
     """
     バックグラウンドでHTTPサーバーを起動する。
     get_stats:  最新の集計dictを返す呼び出し可能オブジェクト。
@@ -24,6 +26,8 @@ def start_stats_server(port, get_stats, on_config=None, get_rows=None, on_assign
     get_rows:   GET /rows で返す行データ(list)を返す呼び出し可能オブジェクト（任意）。
     on_assign:  POST /assign で受け取った手動対応dictを処理する関数（任意）。
     on_reocr:   POST /reocr でOCR再実行を要求された時に呼ぶ関数（任意）。
+    get_slots:  GET /slots で返す位置データ(list)を返す呼び出し可能オブジェクト（任意）。
+    on_register: POST /register で受け取った位置からの登録dictを処理する関数（任意）。
     戻り値: ThreadingHTTPServer（停止したい場合は shutdown() を呼ぶ）。
     """
 
@@ -56,6 +60,10 @@ def start_stats_server(port, get_stats, on_config=None, get_rows=None, on_assign
                 rows = get_rows() if get_rows else []
                 body = json.dumps(rows, ensure_ascii=False).encode("utf-8")
                 self._send(200, body)
+            elif path == "/slots":
+                slots = get_slots() if get_slots else []
+                body = json.dumps(slots, ensure_ascii=False).encode("utf-8")
+                self._send(200, body)
             else:
                 self._send(404, b'{"error":"not found"}')
 
@@ -67,6 +75,8 @@ def start_stats_server(port, get_stats, on_config=None, get_rows=None, on_assign
                 handler = on_assign
             elif path == "/reocr":
                 handler = on_reocr
+            elif path == "/register":
+                handler = on_register
             else:
                 self._send(404, b'{"error":"not found"}')
                 return
