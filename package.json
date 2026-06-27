@@ -1,0 +1,12 @@
+{
+  "name": "4v4warswatcher",
+  "version": "1.0.0",
+  "description": "TFT 4v4 観戦オーバーレイ（Electron版・Overwolf非依存）",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}

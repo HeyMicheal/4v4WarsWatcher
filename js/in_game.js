@@ -1,39 +1,21 @@
-// オーバーレイ表示ロジック
+// オーバーレイ表示ロジック（Electron版）
 //   各プレイヤーの 位置・HP → Pythonワーカーの /stats (HTTP) から取得
-//   チーム分け・色          → ホーム画面の設定（localStorage）
-//   生存/脱落              → Overwolf GEP (live_client_data.all_players の isDead)
-// ワーカーは「誰が・どのY位置で・何HPか」だけを返す。チームへの振り分け・
-// 合計HP・マーカー色・生存数はすべてこのオーバーレイ側で組み立てる。
+//   チーム分け・色          → ホーム画面の設定（main経由のファイル: host.getTeams）
+//   生存/脱落              → ライブクライアントデータ (allPlayers の isDead) を host.onPlayers で受信
 
 // ワーカーのHTTP配信先（worker/config.json の http_port と合わせる）
 const WORKER_URL = 'http://127.0.0.1:17653/stats';
 const POLL_MS = 500;
 
-const GEP_FEATURES = ['live_client_data'];
-
-// ホーム画面のチーム設定の保存キー（home.js と合わせる）
-const TEAMS_KEY = '4v4wars_teams';
-
 let workerStats = null;     // ワーカーから取得した最新のプレイヤー情報
 let deadByName = {};        // プレイヤー名(小文字) -> 脱落しているか
-let teams = loadTeams();    // {a:{name,members[],color}, b:{...}}
+let teams = defaultTeams(); // {a:{name,members[],color,icon}, b:{...}}
 
-// ── ホーム画面のチーム設定を読み込む ──
-function loadTeams() {
-  const def = {
+function defaultTeams() {
+  return {
     a: { name: 'Team A', members: [], color: '#4a90d9', icon: null },
     b: { name: 'Team B', members: [], color: '#d9604a', icon: null },
   };
-  try {
-    const data = JSON.parse(localStorage.getItem(TEAMS_KEY));
-    if (!data) return def;
-    return {
-      a: toSide(data.teamA, def.a),
-      b: toSide(data.teamB, def.b),
-    };
-  } catch (e) {
-    return def;
-  }
 }
 
 // 保存形式 {name, members:[{name,tag}], color, icon} を {name, members:[{name}], color, icon} に正規化
@@ -46,6 +28,15 @@ function toSide(team, fallback) {
     color: team.color || fallback.color,
     icon: team.icon || null,
   };
+}
+
+// main から受け取った生のチーム設定を反映する
+function applyTeams(data) {
+  const def = defaultTeams();
+  if (!data) { teams = def; }
+  else { teams = { a: toSide(data.teamA, def.a), b: toSide(data.teamB, def.b) }; }
+  logTeams('更新');
+  render();
 }
 
 // 名前(小文字) -> {side, color, icon} の対応表を作る（アイコンはチームのもの）
@@ -65,16 +56,6 @@ function logTeams(when) {
   console.log(`[4v4Wars] チーム設定(${when}): `
     + `A=${teams.a.name}[${names('a')}] B=${teams.b.name}[${names('b')}]`);
 }
-logTeams('起動時');
-
-// ホーム画面で設定が変わったら追従する（別ウィンドウの storage イベント）
-window.addEventListener('storage', (event) => {
-  if (event.key === TEAMS_KEY) {
-    teams = loadTeams();
-    logTeams('更新');
-    render();
-  }
-});
 
 // ── ワーカーからプレイヤー情報を取得 ──
 async function pollWorker() {
@@ -87,18 +68,20 @@ async function pollWorker() {
   render();
 }
 
-// ── GEP: all_players から脱落状態を更新 ──
-function updateFromAllPlayers(raw) {
+// ── ライブクライアントデータ: allPlayers から脱落状態を更新 ──
+function updateFromAllPlayers(players) {
   try {
-    const players = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!Array.isArray(players)) return;
     players.forEach((p) => {
-      const name = (p.riotIdGameName || p.summonerName || '').split('#')[0].toLowerCase();
+      // riotIdGameName / riotId("Name#TAG") / summonerName のいずれかから名前を取る
+      const raw = p.riotIdGameName || p.riotId || p.summonerName || '';
+      const name = raw.split('#')[0].toLowerCase();
       if (!name) return;
       deadByName[name] = p.isDead === true;
     });
     render();
   } catch (e) {
-    console.error('[4v4Wars] all_players のパースに失敗:', e);
+    console.error('[4v4Wars] allPlayers のパースに失敗:', e);
   }
 }
 
@@ -155,7 +138,7 @@ function renderTeam(side, byName) {
   nameEl.textContent = team.name;
   panel.style.borderTopColor = team.color;  // チームカラーを枠上部に反映
 
-  // 合計HP: ワーカーが読めているメンバーのHPを合算（未取得はGEP生存に依存しない）
+  // 合計HP: ワーカーが読めているメンバーのHPを合算
   let totalHp = 0;
   team.members.forEach((m) => {
     const p = byName[m.name.toLowerCase()];
@@ -164,41 +147,16 @@ function renderTeam(side, byName) {
   // ワーカー未接続時は値を伏せる（チーム名・色は維持）
   hpEl.textContent = workerStats ? totalHp : '--';
 
-  // 生存数: メンバーのうちGEPで脱落していない人数
+  // 生存数: メンバーのうち脱落していない人数
   const alive = team.members.filter((m) => !deadByName[m.name.toLowerCase()]).length;
   aliveEl.textContent = `${alive}/${team.members.length}`;
   panel.classList.toggle('eliminated', team.members.length > 0 && alive === 0);
 }
 
-// ── GEP イベント購読 ──
-overwolf.games.events.onInfoUpdates2.addListener((event) => {
-  if (event.feature === 'live_client_data' && event.info?.live_client_data?.all_players) {
-    updateFromAllPlayers(event.info.live_client_data.all_players);
-  }
-});
-
-// ── GEP getInfo ポーリング（生存の取りこぼし対策） ──
-function fetchGepInfo() {
-  overwolf.games.events.getInfo((info) => {
-    if (!info?.res) return;
-    if (info.res.live_client_data?.all_players) {
-      updateFromAllPlayers(info.res.live_client_data.all_players);
-    }
-  });
-}
-
-function registerFeatures(retryCount = 0) {
-  overwolf.games.events.setRequiredFeatures(GEP_FEATURES, (result) => {
-    if (result.status === 'success') {
-      fetchGepInfo();
-      setInterval(fetchGepInfo, 3000);
-    } else if (retryCount < 5) {
-      setTimeout(() => registerFeatures(retryCount + 1), 2000);
-    }
-  });
-}
-
 // ── 初期化 ──
-registerFeatures();
+host.getTeams().then(applyTeams);          // 起動時のチーム設定
+host.onTeamsChanged(applyTeams);           // ホームで変わったら追従
+host.onPlayers(updateFromAllPlayers);      // ライブクライアントデータ（生存）
+logTeams('起動時');
 setInterval(pollWorker, POLL_MS);
 pollWorker();

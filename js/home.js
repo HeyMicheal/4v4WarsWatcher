@@ -1,5 +1,4 @@
 const MAX_MEMBERS = 4;
-const STORAGE_KEY = '4v4wars_teams';
 
 const state = {
   a: [],
@@ -26,29 +25,21 @@ const WORKER_REOCR_URL = `${WORKER_BASE}/reocr`;
 const WORKER_SLOTS_URL = `${WORKER_BASE}/slots`;
 const WORKER_REGISTER_URL = `${WORKER_BASE}/register`;
 
-// ワーカー起動設定（フォルダ・Pythonコマンド）の保存キー
-const WORKER_SETTINGS_KEY = '4v4wars_worker';
-
 function saveWorkerSettings() {
   const data = {
     workerDir: document.getElementById('worker-dir').value.trim(),
     pythonCmd: document.getElementById('worker-python').value.trim() || 'pythonw',
     tesseractCmd: document.getElementById('worker-tesseract').value.trim(),
   };
-  localStorage.setItem(WORKER_SETTINGS_KEY, JSON.stringify(data));
+  host.setWorkerSettings(data);  // main がファイルに保存・必要なら再起動
 }
 
-function loadWorkerSettings() {
-  const raw = localStorage.getItem(WORKER_SETTINGS_KEY);
-  if (!raw) return;
-  try {
-    const data = JSON.parse(raw);
-    document.getElementById('worker-dir').value = data.workerDir || '';
-    document.getElementById('worker-python').value = data.pythonCmd || '';
-    document.getElementById('worker-tesseract').value = data.tesseractCmd || '';
-  } catch (e) {
-    // 壊れたデータは無視
-  }
+async function loadWorkerSettings() {
+  const data = await host.getWorkerSettings();
+  if (!data) return;
+  document.getElementById('worker-dir').value = data.workerDir || '';
+  document.getElementById('worker-python').value = data.pythonCmd || '';
+  document.getElementById('worker-tesseract').value = data.tesseractCmd || '';
 }
 
 function persist() {
@@ -56,8 +47,8 @@ function persist() {
     teamA: { name: getVal('team-a-name') || 'Team A', members: state.a, color: getColor('a'), icon: teamIcon.a },
     teamB: { name: getVal('team-b-name') || 'Team B', members: state.b, color: getColor('b'), icon: teamIcon.b },
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  sendToWorker(data);
+  host.setTeams(data);   // main がファイルに保存し、オーバーレイへ即反映
+  sendToWorker(data);    // 名前リストをワーカーへ（HTTP）
 }
 
 function getColor(team) {
@@ -74,7 +65,7 @@ function sendToWorker(data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }).catch(() => {
-    // ワーカー未起動などは無視（localStorageには保存済み）
+    // ワーカー未起動などは無視（設定はファイルに保存済み）
   });
 }
 
@@ -295,12 +286,11 @@ async function confirmAssign() {
   }
 }
 
-function load() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return;
+async function load() {
+  const data = await host.getTeams();
+  if (!data) return;
 
   try {
-    const data = JSON.parse(raw);
     if (data.teamA) {
       setVal('team-a-name', data.teamA.name || 'Team A');
       state.a = data.teamA.members || [];
@@ -555,22 +545,14 @@ function cancelIconEditor() {
   iconState.drag = null;
 }
 
-// ウィンドウ操作
-let currentWindowId = null;
-
-overwolf.windows.getCurrentWindow((result) => {
-  if (result.status === 'success') {
-    currentWindowId = result.window.id;
-  }
-});
-
+// ウィンドウ操作（Electron: main へIPC）
 function minimizeWindow() {
-  overwolf.windows.minimize(currentWindowId, () => {});
+  host.minimize();
 }
 
 function closeWindow() {
-  // background に全終了（ワーカー停止＋全ウィンドウクローズ）を依頼する
-  localStorage.setItem('4v4wars_quit', String(Date.now()));
+  // アプリ全終了（ワーカー停止＋全ウィンドウクローズ）を main に依頼
+  host.quit();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -582,10 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('worker-python').addEventListener('input', saveWorkerSettings);
   document.getElementById('worker-tesseract').addEventListener('input', saveWorkerSettings);
 
-  // タイトルバードラッグ
-  document.getElementById('title-bar-drag').addEventListener('mousedown', () => {
-    overwolf.windows.dragMove(currentWindowId);
-  });
+  // タイトルバードラッグは CSS の -webkit-app-region: drag で行う（Electron）
 
   // アイコン編集（ファイル選択・拡大・ドラッグ・ホイール）
   const iconCanvas = document.getElementById('icon-canvas');
