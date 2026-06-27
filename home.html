@@ -77,10 +77,10 @@
       <div class="assign-head">
         <div>
           <h2>プレイヤー対応（OCRが読めない時のリカバリ）</h2>
-          <p class="assign-hint">各行の名前画像を見て、正しいプレイヤーを選んで「確定」してください。OCRが読めた行は自動で選択済みです。</p>
+          <p class="assign-hint">各行の名前画像を見て、正しいプレイヤーを選んで「確定」してください。OCRが読めた行は自動で選択済みです。読めていない行は各行の「再OCR」で読み直せます。</p>
         </div>
         <div class="assign-head-btns">
-          <button class="btn-refresh" id="assign-reocr" onclick="rerunOcr()" title="スクショのタイミング不良で名前が読めなかった時に、OCRをやり直します">OCR再実行</button>
+          <button class="btn-refresh" id="assign-reocr" onclick="rerunOcr()" title="名前が読めていない行をまとめて読み直します（正しく読めている行は触りません）">未読を一括OCR</button>
           <button class="btn-refresh" id="assign-refresh" onclick="refreshRows()">更新</button>
         </div>
       </div>

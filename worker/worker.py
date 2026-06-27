@@ -113,8 +113,11 @@ def save_config(config):
         json.dump(config, f, ensure_ascii=False, indent=2)
 
 
-# 行(名前画像)をクラスタに割り当てる最低NCC類似度
+# 行(名前画像)をクラスタに割り当てる最低NCC類似度（これ未満は別人扱い）
 MIN_MATCH_NCC = 0.30
+# 位置・HP・画像・OCRを更新してよい「確信できる一致」のNCC閾値。
+# 弱い/誤った一致で正解クラスタを別の行の値で汚染しないためのガード。
+CONFIDENT_NCC = 0.50
 # OCR下書きを採用する最低スコア（誤命名防止のため高め）
 INIT_MATCH_SCORE = 0.55
 # 名前未確定のクラスタを各々EasyOCRする最大回数（これを使い切ったら手動待ち）
@@ -201,17 +204,24 @@ class PlayerTracker:
                 c.manual_name = name if name else None
                 return
 
-    def reset_ocr(self):
-        """手動指定していないクラスタのOCR状態を初期化し、EasyOCRをやり直させる。
-        スクショのタイミング不良で名前が読めなかった時のリカバリ用。手動指定は保持。"""
+    def reset_ocr(self, ids=None):
+        """OCR状態を初期化してEasyOCRをやり直させる（スクショのタイミング不良の復旧用）。
+        - ids=None（一括）: まだ名前が付いていない行だけ。正解は壊さない。
+        - ids指定（行ごと）: その行だけ。手動指定も解除してOCRに任せる。"""
         n = 0
         for c in self.clusters:
-            if not c.manual_name:
-                c.ocr_tries = 0
-                c.guess_cand = None
-                c.guess_score = 0.0
-                c.ocr_name = None
-                n += 1
+            if ids is None:
+                if c.name:        # 一括時は未命名のみ（正解を保護）
+                    continue
+            else:
+                if c.id not in ids:
+                    continue
+                c.manual_name = None  # 指定再OCRはOCR結果に委ねる
+            c.ocr_tries = 0
+            c.guess_cand = None
+            c.guess_score = 0.0
+            c.ocr_name = None
+            n += 1
         return n
 
     def needs_slow(self):
@@ -225,31 +235,34 @@ class PlayerTracker:
         masks = [ocr_engine.name_mask(img, cy) for cy in ocr_engine.ROW_CENTERS]
         non_empty = [i for i, m in enumerate(masks) if not ocr_engine.mask_is_empty(m)]
 
-        # 行→クラスタをNCCで1対1に割り当て（並び替えに追従）
-        slot_cluster = self._match_slots(masks, non_empty)
+        # 行→クラスタをNCCで1対1に割り当て（並び替えに追従）。{slot:(cluster,sim)}
+        matches = self._match_slots(masks, non_empty)
+        slot_cluster = {slot: c for slot, (c, _sim) in matches.items()}
 
-        # 割当されなかった行は新規クラスタにする（人数上限まで）
+        # 割当されなかった行は新規クラスタにする（人数上限まで）。新規は信頼扱い
         cap = max(len(self.names), 8)
+        trusted = {slot for slot, (c, sim) in matches.items() if sim >= CONFIDENT_NCC}
         for slot in non_empty:
             if slot not in slot_cluster and len(self.clusters) < cap:
                 c = Cluster(self.next_id, masks[slot], self._crop_disp(img, slot))
+                c.last_y = ocr_engine.ROW_CENTERS[slot]
                 self.next_id += 1
                 self.clusters.append(c)
                 slot_cluster[slot] = c
+                trusted.add(slot)
 
-        # 位置・表示画像を更新
-        for slot, c in slot_cluster.items():
-            c.last_y = ocr_engine.ROW_CENTERS[slot]
-            c.crop = self._crop_disp(img, slot)
+        # 確信できる一致の行だけ位置を更新（弱い/誤った一致での汚染を防ぐ）
+        for slot in trusted:
+            slot_cluster[slot].last_y = ocr_engine.ROW_CENTERS[slot]
 
-        # 割り当てた行のHPを一括で読んで更新
-        hps = ocr_engine.read_hps(img, list(slot_cluster.keys()))
-        for slot, c in slot_cluster.items():
+        # 確信できる行のHPを一括で読んで更新
+        hps = ocr_engine.read_hps(img, list(trusted))
+        for slot in trusted:
             if hps.get(slot) is not None:
-                c.last_hp = hps[slot]
+                slot_cluster[slot].last_hp = hps[slot]
 
-        # OCR下書き（未確定クラスタを少数回だけ読む）
-        self._ocr_draft(img, slot_cluster)
+        # OCR下書き（確信できる行のうち未確定のものだけ。画像もこの時に取り直す）
+        self._ocr_draft(img, {slot: slot_cluster[slot] for slot in trusted})
         # OCR下書き同士の名前重複を解消して確定
         self._resolve_names()
 
@@ -262,7 +275,7 @@ class PlayerTracker:
         }
 
     def _match_slots(self, masks, non_empty):
-        """非空行を既存クラスタにNCCで1対1割り当て。{slot: Cluster} を返す。"""
+        """非空行を既存クラスタにNCCで1対1割り当て。{slot: (Cluster, sim)} を返す。"""
         pairs = []
         for slot in non_empty:
             for c in self.clusters:
@@ -275,7 +288,7 @@ class PlayerTracker:
                 break
             if slot in used_slots or c.id in used_ids:
                 continue
-            res[slot] = c
+            res[slot] = (c, sim)
             used_slots.add(slot)
             used_ids.add(c.id)
         return res
@@ -287,10 +300,13 @@ class PlayerTracker:
         return crop.resize((crop.width * 2, crop.height * 2), Image.LANCZOS)
 
     def _ocr_draft(self, img, slot_cluster):
-        """名前未確定のクラスタをEasyOCRで読み、最良候補を下書きとして蓄える。"""
+        """名前未確定のクラスタをEasyOCRで読み、最良候補を下書きとして蓄える。
+        命名済みクラスタの画像は凍結し、読み直す行だけ画像を更新する
+        （正解プレイヤーの画像が別フレームで汚染されるのを防ぐ）。"""
         for slot, c in slot_cluster.items():
             if c.name is not None or c.ocr_tries >= MAX_OCR_TRIES:
                 continue
+            c.crop = self._crop_disp(img, slot)  # 読む瞬間の画像を表示用に保存
             c.ocr_tries += 1
             raw = ocr_engine.read_name(img, ocr_engine.ROW_CENTERS[slot])
             cand, score = ocr_engine.fuzzy_match(raw, self.names)
@@ -389,12 +405,15 @@ def main():
 
     latest = {"stats": {"players": []}, "rows": []}
     state = {"last": 0.0, "warned_size": False, "tracker": PlayerTracker(config),
-             "pending_assign": {}, "pending_reocr": False}
+             "pending_assign": {}, "pending_reocr": False, "pending_reocr_ids": None}
 
     def on_reocr(payload=None):
-        """ホーム画面の「OCR再実行」。次の更新でOCR状態を初期化する。"""
+        """ホーム画面の「OCR再実行」。次の更新でOCR状態を初期化する。
+        payload に ids があれば、その行だけ読み直す（なければ未命名を一括）。"""
+        ids = (payload or {}).get("ids")
         state["pending_reocr"] = True
-        print("OCR再実行の要求を受信")
+        state["pending_reocr_ids"] = set(int(i) for i in ids) if ids else None
+        print(f"OCR再実行の要求を受信（対象: {'指定行' if ids else '未命名一括'}）")
 
     def on_assign(payload):
         """ホーム画面で手動指定された {行ID: 名前} を、次の更新で反映するため貯める。
@@ -460,8 +479,9 @@ def main():
 
         # ホーム画面からの「OCR再実行」を反映する
         if state["pending_reocr"]:
-            n = tracker.reset_ocr()
+            n = tracker.reset_ocr(state.get("pending_reocr_ids"))
             state["pending_reocr"] = False
+            state["pending_reocr_ids"] = None
             print(f"OCRを再実行します（対象 {n}クラスタ）")
 
         img = frame_to_image(frame)
@@ -541,6 +561,7 @@ def main():
             state["tracker"] = PlayerTracker(config)
             state["pending_assign"] = {}
             state["pending_reocr"] = False
+            state["pending_reocr_ids"] = None
             try:
                 run_session()
             except KeyboardInterrupt:

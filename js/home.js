@@ -98,15 +98,16 @@ async function refreshRows() {
   }
 }
 
-// OCRをやり直す（スクショのタイミング不良で名前が読めなかった時のリカバリ）
-async function rerunOcr() {
+// OCRをやり直す（スクショのタイミング不良で名前が読めなかった時のリカバリ）。
+// ids を渡すとその行だけ、渡さなければ未命名の行を一括で読み直す。
+async function rerunOcr(ids) {
   const msg = document.getElementById('assign-msg');
-  msg.textContent = 'OCRを再実行中…（数秒かかります）';
+  msg.textContent = ids ? 'この行を再OCR中…' : 'OCRを再実行中…（数秒かかります）';
   try {
     await fetch(WORKER_REOCR_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+      body: JSON.stringify(ids ? { ids } : {}),
     });
     // 再OCRに数秒かかるので、少し待ってから行を取り直す
     setTimeout(() => {
@@ -117,6 +118,11 @@ async function rerunOcr() {
   } catch (e) {
     msg.textContent = 'ワーカーに接続できません（起動しているか確認してください）';
   }
+}
+
+// その行（位置）だけOCRを読み直す
+function rerunOcrRow(id) {
+  rerunOcr([id]);
 }
 
 function renderRows() {
@@ -154,9 +160,17 @@ function renderRows() {
     hp.className = 'assign-hp';
     hp.textContent = (r.hp != null) ? `HP ${r.hp}` : '';
 
+    // この行だけOCRを読み直すボタン
+    const reocr = document.createElement('button');
+    reocr.className = 'assign-row-reocr';
+    reocr.textContent = '再OCR';
+    reocr.title = 'この行（位置）だけOCRを読み直す';
+    reocr.onclick = () => rerunOcrRow(r.id);
+
     row.appendChild(img);
     row.appendChild(sel);
     row.appendChild(hp);
+    row.appendChild(reocr);
     container.appendChild(row);
   });
 }
