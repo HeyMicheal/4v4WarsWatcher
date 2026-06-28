@@ -2,6 +2,10 @@
 *.log
 node_modules/
 
+# Electronブランチのビルド成果物（mainに紛れ込ませない）
+dist/
+package-lock.json
+
 # OCRワーカー
 worker/capture.png
 worker/config.json

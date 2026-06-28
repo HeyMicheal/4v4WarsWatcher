@@ -133,10 +133,10 @@ function renderMarkers(players) {
     badge.style.left = `${BADGE_X}px`;
     badge.style.top = `${p.y + BADGE_DY}px`;
     if (info.icon) {
-      // アイコンがあればマーカーをアイコンに置換（周囲はチーム色のリング）
+      // アイコンがあればマーカーをアイコンに置換（周囲のリングは白で統一）
       badge.classList.add('has-icon');
       badge.style.backgroundImage = `url("${info.icon}")`;
-      badge.style.borderColor = info.color || '#fff';
+      badge.style.borderColor = '#fff';
     } else {
       // アイコン未設定は従来どおりチーム色の塗りバッジ
       badge.style.backgroundColor = info.color || '#fff';
@@ -155,10 +155,13 @@ function renderTeam(side, byName) {
   nameEl.textContent = team.name;
   panel.style.borderTopColor = team.color;  // チームカラーを枠上部に反映
 
-  // 合計HP: ワーカーが読めているメンバーのHPを合算（未取得はGEP生存に依存しない）
+  // 合計HP: ワーカーが読めているメンバーのHPを合算。
+  // 死亡プレイヤーは0扱い（死亡後に最終OCR値が加算され続けるのを防ぐ）。
   let totalHp = 0;
   team.members.forEach((m) => {
-    const p = byName[m.name.toLowerCase()];
+    const lower = m.name.toLowerCase();
+    if (deadByName[lower]) return;  // 死亡者はHP=0
+    const p = byName[lower];
     if (p && p.hp != null) totalHp += p.hp;
   });
   // ワーカー未接続時は値を伏せる（チーム名・色は維持）
