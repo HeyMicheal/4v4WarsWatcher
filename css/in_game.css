@@ -5,19 +5,22 @@
 }
 
 body {
-  width: 1920px;
-  height: 1080px;
+  width: 100vw;
+  height: 100vh;
   background: transparent;
   overflow: hidden;
   font-family: 'Segoe UI', sans-serif;
   color: #fff;
 }
 
+/* 1920x1080固定のレイアウト土台。JSが window サイズに合わせて transform:scale する */
 #overlay-root {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 0 0;
 }
 
 /* ── 共通パネル ── */

@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('host', {
   // 試合中かどうかの変化通知（オーバーレイ表示制御の参考）
   onGameActive: (cb) => ipcRenderer.on('game-active', (_e, active) => cb(active)),
 
+  // オーバーレイをゲーム窓の矩形に合わせる（{left,top,width,height} 物理px）
+  setOverlayBounds: (rect) => ipcRenderer.send('set-overlay-bounds', rect),
+
   // ウィンドウ操作（旧 overwolf.windows.*）
   minimize: () => ipcRenderer.send('win-minimize'),
   quit: () => ipcRenderer.send('app-quit'),

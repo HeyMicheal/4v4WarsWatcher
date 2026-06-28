@@ -65,7 +65,22 @@ async function pollWorker() {
   } catch (e) {
     workerStats = null;  // ワーカー未起動など
   }
+  applyOverlayGeometry();  // ゲーム窓に追従
   render();
+}
+
+// オーバーレイをゲーム窓に貼り付ける：
+//  - 窓の画面矩形を main へ送り、オーバーレイウィンドウをその位置・サイズへ
+//  - 1920x1080固定レイアウトを、自ウィンドウの実サイズに合わせてスケール
+//    （DPIや窓サイズの違いを window.innerWidth/Height で吸収）
+function applyOverlayGeometry() {
+  const w = workerStats?.window;
+  if (w) host.setOverlayBounds(w);
+  const root = document.getElementById('overlay-root');
+  if (root) {
+    root.style.transformOrigin = '0 0';
+    root.style.transform = `scale(${window.innerWidth / 1920}, ${window.innerHeight / 1080})`;
+  }
 }
 
 // ── ライブクライアントデータ: allPlayers から脱落状態を更新 ──
@@ -157,6 +172,8 @@ function renderTeam(side, byName) {
 host.getTeams().then(applyTeams);          // 起動時のチーム設定
 host.onTeamsChanged(applyTeams);           // ホームで変わったら追従
 host.onPlayers(updateFromAllPlayers);      // ライブクライアントデータ（生存）
+window.addEventListener('resize', applyOverlayGeometry);  // 窓サイズ変化に追従
 logTeams('起動時');
+applyOverlayGeometry();
 setInterval(pollWorker, POLL_MS);
 pollWorker();

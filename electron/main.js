@@ -74,6 +74,7 @@ function createOverlayWindow() {
   overlayWin.setIgnoreMouseEvents(true);            // クリックスルー
   overlayWin.setAlwaysOnTop(true, 'screen-saver');  // ゲームより前面
   overlayWin.loadFile(path.join(ROOT, 'in_game.html'));
+  lastOverlayKey = '';  // 位置追従のキャッシュをリセット
   overlayWin.on('closed', () => { overlayWin = null; });
 }
 
@@ -188,6 +189,27 @@ ipcMain.handle('set-worker-settings', (_e, data) => {
   if (gameActive) { killWorker(); launchWorker(); }
   return true;
 });
+// オーバーレイをゲーム窓のクライアント矩形（物理px）に合わせる。
+// 物理px→DIPはディスプレイのDPIを考慮して screen.screenToDipRect で変換。
+let lastOverlayKey = '';
+ipcMain.on('set-overlay-bounds', (_e, rect) => {
+  if (!overlayWin || !rect || !rect.width || !rect.height) return;
+  const key = `${rect.left},${rect.top},${rect.width},${rect.height}`;
+  if (key === lastOverlayKey) return;  // 変化が無ければ動かさない
+  lastOverlayKey = key;
+  try {
+    const dip = screen.screenToDipRect(overlayWin, {
+      x: rect.left, y: rect.top, width: rect.width, height: rect.height,
+    });
+    overlayWin.setBounds({
+      x: Math.round(dip.x), y: Math.round(dip.y),
+      width: Math.round(dip.width), height: Math.round(dip.height),
+    });
+  } catch (err) {
+    console.error('[4v4Wars] オーバーレイ位置調整に失敗:', err.message);
+  }
+});
+
 ipcMain.on('win-minimize', (e) => {
   const w = BrowserWindow.fromWebContents(e.sender);
   if (w) w.minimize();

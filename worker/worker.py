@@ -442,6 +442,37 @@ def wait_for_window(name, poll=2):
         time.sleep(poll)
 
 
+def get_window_rect(name):
+    """指定ウィンドウの「クライアント領域」の画面上の矩形を返す。
+    Electron側がオーバーレイをこの矩形に合わせて重ねる（ゲーム窓に追従）。
+    返り値: {left, top, width, height}（物理ピクセル）または None。Windows専用。"""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        import pygetwindow as gw
+
+        wins = [w for w in gw.getWindowsWithTitle(name) if w.title and name in w.title]
+        if not wins:
+            return None
+        hwnd = wins[0]._hWnd
+        user32 = ctypes.windll.user32
+
+        rect = wintypes.RECT()
+        if not user32.GetClientRect(hwnd, ctypes.byref(rect)):
+            return None
+        w = rect.right - rect.left
+        h = rect.bottom - rect.top
+        if w <= 0 or h <= 0:
+            return None
+        # クライアント左上を画面座標へ変換
+        pt = wintypes.POINT(0, 0)
+        if not user32.ClientToScreen(hwnd, ctypes.byref(pt)):
+            return None
+        return {"left": int(pt.x), "top": int(pt.y), "width": int(w), "height": int(h)}
+    except Exception:
+        return None  # 非Windows/取得失敗
+
+
 def main():
     setup_logging()
     ocr_engine.setup_tessdata()  # tesseractとtessdataを解決（ログに記録される）
@@ -589,6 +620,8 @@ def main():
                 f.write(f"\n--- {datetime.now().isoformat()} ---\n{tb}\n")
             return
 
+        # オーバーレイ追従用に、ゲーム窓の画面上矩形を集計へ含める
+        stats["window"] = get_window_rect(WINDOW_NAME)
         # HTTP配信用に最新の集計と行画像を更新し、集計はファイルにも残す
         latest["stats"] = stats
         latest["rows"] = tracker.rows_payload()
