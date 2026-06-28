@@ -1,0 +1,21 @@
+# Overwolfの拡張パッケージから除外するもの（.gitignore風）。
+# Electron/開発用の重い成果物や、実行時に不要なものを含めない。
+.git/
+node_modules/
+dist/
+electron/
+package.json
+package-lock.json
+.gitignore
+.opignore
+
+# C#プラグインのソース（実行に必要なのは plugins/worker-launcher.dll のみ）
+plugin/
+
+# ドキュメント・ログ・一時物
+*.md
+*.log
+worker/__pycache__/
+worker/config.json
+worker/output.json
+worker/*.png
