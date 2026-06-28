@@ -124,6 +124,20 @@ INIT_MATCH_SCORE = 0.55
 MAX_OCR_TRIES = 5
 # 表示用の名前画像クロップ範囲（名前＋HPが入る帯。手動対応で人が読む用）
 DISP_X = (1655, 1858)
+# テンプレ照合のNCC合成の重み（名前マスク : タクティシャン肖像）。
+# 名前を高めにして、同じ肖像の別人を名前で区別できるようにする。
+NAME_W, TACT_W = 0.6, 0.4
+
+
+def template_features(img, cy):
+    """テンプレ照合用の特徴を作る: (名前白文字マスク, タクティシャン肖像)。"""
+    return (ocr_engine.name_mask(img, cy), ocr_engine.tactician_feature(img, cy))
+
+
+def template_ncc(feat, template):
+    """特徴(名前,肖像)とテンプレートの合成NCC（名前0.6＋肖像0.4）。"""
+    return (NAME_W * ocr_engine.ncc(feat[0], template[0])
+            + TACT_W * ocr_engine.ncc(feat[1], template[1]))
 
 
 def _png_b64(pil_img):
@@ -140,7 +154,7 @@ class Cluster:
 
     def __init__(self, cid, template, crop):
         self.id = cid
-        self.template = template   # NCC照合用マスク
+        self.template = template   # 照合用テンプレ特徴 (名前マスク, 肖像)
         self.crop = crop           # 表示用RGB画像(PIL)
         self.ocr_name = None       # OCR下書きで付いた名前
         self.manual_name = None    # ホーム画面で手動指定された名前（最優先）
@@ -224,8 +238,8 @@ class PlayerTracker:
             n += 1
         return n
 
-    def register_slot(self, mask, crop, y, name):
-        """指定位置のキャプチャ画像を、その名前のテンプレートとして登録/変更する（手動）。
+    def register_slot(self, feat, crop, y, name):
+        """指定位置のキャプチャ特徴を、その名前のテンプレートとして登録/変更する（手動）。
         - 同名の既存クラスタがあればテンプレを差し替え（変更）
         - 無ければ画像が近い既存を再利用、それも無ければ新規追加
         OCRに頼らず、人が見た画像をそのままテンプレートにできる。"""
@@ -234,13 +248,13 @@ class PlayerTracker:
         if target is None:
             best, best_sim = None, 0.0
             for c in self.clusters:
-                s = ocr_engine.ncc(mask, c.template)
+                s = template_ncc(feat, c.template)
                 if s > best_sim:
                     best, best_sim = c, s
             if best is not None and best_sim >= CONFIDENT_NCC:
                 target = best
             else:
-                target = Cluster(self.next_id, mask, crop)
+                target = Cluster(self.next_id, feat, crop)
                 self.next_id += 1
                 self.clusters.append(target)
         # 名前の重複を防ぐ（他クラスタから同名を外す）
@@ -250,7 +264,7 @@ class PlayerTracker:
                     c.manual_name = None
                 if c.ocr_name == name:
                     c.ocr_name = None
-        target.template = mask
+        target.template = feat
         target.crop = crop
         target.last_y = y
         target.manual_name = name
@@ -282,11 +296,13 @@ class PlayerTracker:
 
     def update(self, img):
         """1フレームを処理し、プレイヤーごとの位置・HPを返す。"""
-        masks = [ocr_engine.name_mask(img, cy) for cy in ocr_engine.ROW_CENTERS]
+        # テンプレ特徴(名前マスク, タクティシャン肖像)を各行で作る
+        feats = [template_features(img, cy) for cy in ocr_engine.ROW_CENTERS]
+        masks = [f[0] for f in feats]   # 名前マスク（空行判定にも使う）
         non_empty = [i for i, m in enumerate(masks) if not ocr_engine.mask_is_empty(m)]
 
-        # 行→クラスタをNCCで1対1に割り当て（並び替えに追従）。{slot:(cluster,sim)}
-        matches = self._match_slots(masks, non_empty)
+        # 行→クラスタを合成NCCで1対1に割り当て（並び替えに追従）。{slot:(cluster,sim)}
+        matches = self._match_slots(feats, non_empty)
         slot_cluster = {slot: c for slot, (c, _sim) in matches.items()}
 
         # 割当されなかった行は新規クラスタにする（人数上限まで）。新規は信頼扱い
@@ -294,7 +310,7 @@ class PlayerTracker:
         trusted = {slot for slot, (c, sim) in matches.items() if sim >= CONFIDENT_NCC}
         for slot in non_empty:
             if slot not in slot_cluster and len(self.clusters) < cap:
-                c = Cluster(self.next_id, masks[slot], self._crop_disp(img, slot))
+                c = Cluster(self.next_id, feats[slot], self._crop_disp(img, slot))
                 c.last_y = ocr_engine.ROW_CENTERS[slot]
                 self.next_id += 1
                 self.clusters.append(c)
@@ -324,12 +340,12 @@ class PlayerTracker:
             "players": self._players(),
         }
 
-    def _match_slots(self, masks, non_empty):
-        """非空行を既存クラスタにNCCで1対1割り当て。{slot: (Cluster, sim)} を返す。"""
+    def _match_slots(self, feats, non_empty):
+        """非空行を既存クラスタに合成NCCで1対1割り当て。{slot: (Cluster, sim)} を返す。"""
         pairs = []
         for slot in non_empty:
             for c in self.clusters:
-                pairs.append((ocr_engine.ncc(masks[slot], c.template), slot, c))
+                pairs.append((template_ncc(feats[slot], c.template), slot, c))
         pairs.sort(key=lambda p: p[0], reverse=True)
 
         used_slots, used_ids, res = set(), set(), {}
@@ -587,9 +603,9 @@ def main():
         if state["pending_register"]:
             for slot, name in state["pending_register"]:
                 cy = ocr_engine.ROW_CENTERS[slot]
-                mask = ocr_engine.name_mask(img, cy)
+                feat = template_features(img, cy)
                 crop = tracker._crop_disp(img, slot)
-                tracker.register_slot(mask, crop, cy, name)
+                tracker.register_slot(feat, crop, cy, name)
                 print(f"位置から登録: 行{slot}(上から) → {name}")
             state["pending_register"] = []
 

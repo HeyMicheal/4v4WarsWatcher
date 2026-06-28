@@ -174,6 +174,21 @@ def mask_is_empty(mask):
     return float(mask.mean()) < NAME_EMPTY_RATIO
 
 
+# タクティシャン肖像（テンプレ照合の補助特徴）。名前マスクと併用して、
+# 背景差で名前マスクの一致率が落ちる場合（短い名前など）を補強する。
+TACT_X = (1856, 1902)   # 右端の丸い肖像（中心x≈1877）。外縁のHPリングは少し避ける
+TACT_HALF_H = 22        # 中心からの上下の高さ
+TACT_SIZE = (44, 44)    # 正規化サイズ
+
+
+def tactician_feature(img, cy):
+    """指定行のタクティシャン肖像をグレースケールの正規化画像(float32)で返す。
+    肖像は試合中ほぼ不変で識別力が高いため、テンプレ照合の補助に使う。"""
+    crop = img.crop((TACT_X[0], cy - TACT_HALF_H, TACT_X[1], cy + TACT_HALF_H))
+    g = ImageOps.grayscale(crop.resize(TACT_SIZE, Image.LANCZOS))
+    return np.asarray(g, dtype=np.float32) / 255.0
+
+
 def ncc(a, b):
     """2つのマスクの正規化相互相関(-1〜1)。1に近いほど同一。"""
     a = a - a.mean()
