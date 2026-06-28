@@ -2,6 +2,10 @@
 *.log
 node_modules/
 
+# Electron ビルド成果物
+dist/
+package-lock.json
+
 # OCRワーカー
 worker/capture.png
 worker/config.json

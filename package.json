@@ -4,9 +4,40 @@
   "description": "TFT 4v4 観戦オーバーレイ（Electron版・Overwolf非依存）",
   "main": "electron/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win"
   },
   "devDependencies": {
-    "electron": "^33.2.0"
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.heymicheal.4v4warswatcher",
+    "productName": "4v4WarsWatcher",
+    "directories": { "output": "dist" },
+    "files": [
+      "electron/**/*",
+      "js/**/*",
+      "css/**/*",
+      "img/**/*",
+      "*.html"
+    ],
+    "extraResources": [
+      {
+        "from": "worker",
+        "to": "worker",
+        "filter": ["**/*", "!__pycache__/**", "!*.log", "!config.json", "!output.json", "!*.png"]
+      }
+    ],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "img/icons/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
