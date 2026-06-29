@@ -3,6 +3,7 @@
 //   - Pythonワーカーを child_process で起動/停止（旧 C#プラグイン）
 //   - ライブクライアントデータ(127.0.0.1:2999)をポーリング（旧 GEP）
 //   - チーム設定/ワーカー設定をファイルで保持し、レンダラーへIPCで橋渡し
+//   - 配信用HTTPサーバ(127.0.0.1:17654)で、OBSブラウザソース用オーバーレイを配信
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -31,6 +32,7 @@ let homeWin = null;
 let overlayWin = null;
 let workerProc = null;
 let gameActive = false;
+let latestPlayers = [];  // ライブクライアントデータの最新 allPlayers（配信サーバ /players 用）
 
 // ── ウィンドウ ──
 function createHomeWindow() {
@@ -148,6 +150,7 @@ function pollLiveClient() {
         try {
           const data = JSON.parse(buf);
           const players = data.allPlayers || [];
+          latestPlayers = players;  // 配信サーバ /players へ
           setGameActive(true);
           if (overlayWin) overlayWin.webContents.send('players', players);
         } catch (e) {
@@ -216,10 +219,60 @@ ipcMain.on('win-minimize', (e) => {
 });
 ipcMain.on('app-quit', () => { killWorker(); app.quit(); });
 
+// ── 配信用HTTPサーバ（OBSブラウザソース用） ──
+// OBSの「ブラウザソース」に http://127.0.0.1:17654/ を指定すると、画面上の透明
+// ウィンドウとは別に、配信に確実に乗るオーバーレイを得られる（ゲームキャプチャでも映る）。
+const STREAM_PORT = 17654;
+const STREAM_STATIC = {
+  '/': 'stream.html',
+  '/stream.html': 'stream.html',
+  '/css/in_game.css': 'css/in_game.css',
+  '/js/stream.js': 'js/stream.js',
+};
+function streamMime(file) {
+  if (file.endsWith('.html')) return 'text/html; charset=utf-8';
+  if (file.endsWith('.css')) return 'text/css; charset=utf-8';
+  if (file.endsWith('.js')) return 'application/javascript; charset=utf-8';
+  return 'application/octet-stream';
+}
+function startStreamServer() {
+  const server = http.createServer((req, res) => {
+    const url = (req.url || '/').split('?')[0];
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    if (url === '/teams') {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify(readJson(teamsFile(), null)));
+      return;
+    }
+    if (url === '/players') {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify(latestPlayers));
+      return;
+    }
+    const file = STREAM_STATIC[url];
+    if (file) {
+      fs.readFile(path.join(ROOT, file), (err, buf) => {
+        if (err) { res.statusCode = 404; res.end('not found'); return; }
+        res.setHeader('Content-Type', streamMime(file));
+        res.end(buf);
+      });
+      return;
+    }
+    res.statusCode = 404;
+    res.end('not found');
+  });
+  server.on('error', (e) => console.error('[4v4Wars] 配信サーバ起動失敗:', e.message));
+  server.listen(STREAM_PORT, '127.0.0.1', () => {
+    console.log(`[4v4Wars] 配信オーバーレイ: http://127.0.0.1:${STREAM_PORT}/ （OBSブラウザソースに設定）`);
+  });
+}
+
 // ── ライフサイクル ──
 app.whenReady().then(() => {
   CONFIG_DIR = app.getPath('userData');
   createHomeWindow();
+  startStreamServer();
   setInterval(pollLiveClient, 2000);
   pollLiveClient();
 });

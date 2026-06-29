@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>4v4WarsWatcher Stream Overlay</title>
+  <link rel="stylesheet" href="css/in_game.css" />
+</head>
+<!--
+  OBS「ブラウザソース」用のオーバーレイ。
+  URL: http://127.0.0.1:17654/  （幅1920 / 高さ1080 を推奨）
+  ゲームキャプチャ(1920x1080)の上に、同じ1920x1080で重ねるとマーカーが一致します。
+-->
+<body>
+  <div id="overlay-root">
+
+    <!-- TFTプレイヤーリストに重ねるチーム色マーカー -->
+    <div id="markers"></div>
+
+    <!-- Team A（左側） -->
+    <div id="team-a-panel" class="team-panel">
+      <div class="panel-name" id="team-a-name">Team A</div>
+      <div class="panel-stats">
+        <div class="stat">
+          <span class="stat-value" id="team-a-hp">--</span>
+          <span class="stat-label">HP</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-value" id="team-a-alive">--</span>
+          <span class="stat-label">生存</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Team B（右側） -->
+    <div id="team-b-panel" class="team-panel">
+      <div class="panel-name" id="team-b-name">Team B</div>
+      <div class="panel-stats">
+        <div class="stat">
+          <span class="stat-value" id="team-b-hp">--</span>
+          <span class="stat-label">HP</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat">
+          <span class="stat-value" id="team-b-alive">--</span>
+          <span class="stat-label">生存</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="js/stream.js"></script>
+</body>
+</html>
