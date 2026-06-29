@@ -33,6 +33,7 @@ let overlayWin = null;
 let workerProc = null;
 let gameActive = false;
 let latestPlayers = [];  // ライブクライアントデータの最新 allPlayers（配信サーバ /players 用）
+let streamServer = null;  // 配信用HTTPサーバ（終了時に明示クローズする）
 
 // ── ウィンドウ ──
 function createHomeWindow() {
@@ -236,7 +237,7 @@ function streamMime(file) {
   return 'application/octet-stream';
 }
 function startStreamServer() {
-  const server = http.createServer((req, res) => {
+  streamServer = http.createServer((req, res) => {
     const url = (req.url || '/').split('?')[0];
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cache-Control', 'no-store');
@@ -262,8 +263,8 @@ function startStreamServer() {
     res.statusCode = 404;
     res.end('not found');
   });
-  server.on('error', (e) => console.error('[4v4Wars] 配信サーバ起動失敗:', e.message));
-  server.listen(STREAM_PORT, '127.0.0.1', () => {
+  streamServer.on('error', (e) => console.error('[4v4Wars] 配信サーバ起動失敗:', e.message));
+  streamServer.listen(STREAM_PORT, '127.0.0.1', () => {
     console.log(`[4v4Wars] 配信オーバーレイ: http://127.0.0.1:${STREAM_PORT}/ （OBSブラウザソースに設定）`);
   });
 }
@@ -277,5 +278,10 @@ app.whenReady().then(() => {
   pollLiveClient();
 });
 
-app.on('window-all-closed', () => { killWorker(); app.quit(); });
-app.on('before-quit', () => killWorker());
+// 終了時はワーカー停止＋配信サーバのクローズ（プロセス終了でも閉じるが明示的に）
+function shutdown() {
+  killWorker();
+  if (streamServer) { try { streamServer.close(); } catch (e) { /* ignore */ } streamServer = null; }
+}
+app.on('window-all-closed', () => { shutdown(); app.quit(); });
+app.on('before-quit', () => shutdown());
