@@ -131,10 +131,9 @@ function renderMarkers(players) {
     badge.style.left = `${BADGE_X}px`;
     badge.style.top = `${p.y + BADGE_DY}px`;
     if (info.icon) {
-      // アイコンがあればマーカーをアイコンに置換（周囲のリングは白で統一）
+      // アイコンがあればマーカーをアイコンに置換（リングなし）
       badge.classList.add('has-icon');
       badge.style.backgroundImage = `url("${info.icon}")`;
-      badge.style.borderColor = '#fff';
     } else {
       // アイコン未設定は従来どおりチーム色の塗りバッジ
       badge.style.backgroundColor = info.color || '#fff';

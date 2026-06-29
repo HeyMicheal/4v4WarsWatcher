@@ -112,9 +112,8 @@ function renderMarkers(players) {
     badge.style.left = `${BADGE_X}px`;
     badge.style.top = `${p.y + BADGE_DY}px`;
     if (info.icon) {
-      badge.classList.add('has-icon');
+      badge.classList.add('has-icon');  // アイコン置換（リングなし）
       badge.style.backgroundImage = `url("${info.icon}")`;
-      badge.style.borderColor = '#fff';
     } else {
       badge.style.backgroundColor = info.color || '#fff';
     }

@@ -126,7 +126,7 @@ body {
   pointer-events: none;
 }
 
-/* アイコンが設定されている場合は画像マーカー（周囲はチーム色リング） */
+/* アイコンが設定されている場合は画像マーカー（リングなし） */
 .team-marker.has-icon {
   width: 32px;
   height: 32px;
@@ -135,5 +135,5 @@ body {
   background-color: #0a0a14;
   background-size: cover;
   background-position: center;
-  border-width: 1.5px;   /* リングは細め。border-color はJSで上書き */
+  border: none;   /* 周囲のリングは出さない */
 }
