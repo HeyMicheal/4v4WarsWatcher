@@ -81,3 +81,15 @@
 ---
 
 開発・仕組みの詳細を知りたい方は `worker/README.md` も参照してください。
+
+## 法的表記 / Legal
+
+4v4WarsWatcher isn't endorsed by Riot Games and doesn't reflect the views or
+opinions of Riot Games or anyone officially involved in producing or managing
+Riot Games properties. Riot Games, and all associated properties are trademarks
+or registered trademarks of Riot Games, Inc.
+
+4v4WarsWatcherは、ライアットゲームズが公式承認するものではなく、ライアットゲームズ
+又はリーグ・オブ・レジェンドの製作・管理に正式に関与したいかなる者の見解・意見に
+基づくものではありません。リーグ・オブ・レジェンド及びライアットゲームズは、
+Riot Games, Inc.の商標又は登録商標です。リーグ・オブ・レジェンド © Riot Games, Inc.
