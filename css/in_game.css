@@ -27,7 +27,7 @@ body {
 .team-panel {
   position: absolute;
   top: 8px;
-  width: 220px;
+  width: 270px;  /* アイコン分だけ横に拡張（縦幅は不変） */
   background: rgba(10, 10, 24, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
@@ -68,6 +68,16 @@ body {
   align-items: center;
   justify-content: center;
   gap: 16px;
+}
+
+/* HPの左に出すチームアイコン（未設定時はJSで非表示）。高さは統計行に収め縦幅を変えない */
+.team-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #0a0a14;
+  flex-shrink: 0;
 }
 
 .stat {

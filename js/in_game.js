@@ -148,9 +148,16 @@ function renderTeam(side, byName) {
   const hpEl = document.getElementById(`team-${side}-hp`);
   const aliveEl = document.getElementById(`team-${side}-alive`);
   const panel = document.getElementById(`team-${side}-panel`);
+  const iconEl = document.getElementById(`team-${side}-icon`);
 
   nameEl.textContent = team.name;
   panel.style.borderTopColor = team.color;  // チームカラーを枠上部に反映
+
+  // HPの左にチームアイコンを表示（未設定なら隠す＝従来どおり色のみ）
+  if (iconEl) {
+    if (team.icon) { iconEl.src = team.icon; iconEl.style.display = ''; }
+    else { iconEl.removeAttribute('src'); iconEl.style.display = 'none'; }
+  }
 
   // 合計HP: ワーカーが読めているメンバーのHPを合算。
   // 死亡プレイヤーは0扱い（死亡後に最終OCR値が加算され続けるのを防ぐ）。
